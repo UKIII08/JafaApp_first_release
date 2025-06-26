@@ -1,0 +1,35 @@
+{
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "jafaapp-84a1d",
+          "appId": "1:117312699711:android:daf21c3c45bc7b960a678a",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "jafaapp-84a1d",
+          "configurations": {
+            "android": "1:117312699711:android:daf21c3c45bc7b960a678a",
+            "ios": "1:117312699711:ios:7f52c2059e22e87c0a678a"
+          }
+        }
+      }
+    }
+  },
+  "functions": [
+    {
+      "source": "functions",
+      "codebase": "default",
+      "ignore": [
+        "node_modules",
+        ".git",
+        "firebase-debug.log",
+        "firebase-debug.*.log",
+        "*.local"
+      ]
+    }
+  ]
+}

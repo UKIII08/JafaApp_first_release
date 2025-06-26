@@ -1,0 +1,61 @@
+# Pliki konfiguracyjne i środowiskowe
+.env
+GoogleService-Info.plist
+ServiceDefinitions.json
+google-services.json
+# Katalogi build
+build/
+
+# iOS / Xcode
+*.mode1v3
+*.mode2v3
+*.pbxuser
+*.perspectivev3
+*.moved-aside
+*.xcuserstate
+xcuserdata/
+DerivedData/
+Icon?
+profile
+*.tags*
+*.swp
+
+# Flutter i Dart
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+
+# Flutter output
+Flutter/App.framework
+Flutter/Flutter.framework
+Flutter/Flutter.podspec
+Flutter/Generated.xcconfig
+Flutter/ephemeral/
+Flutter/app.flx
+Flutter/app.zip
+Flutter/flutter_assets/
+Flutter/flutter_export_environment.sh
+
+# Pods (CocoaPods)
+Pods/
+**/.symlinks/
+
+# Vagrant
+.vagrant/
+
+# SCons
+.sconsign.dblite
+
+# Generated files
+**/.generated/
+Runner/GeneratedPluginRegistrant.*
+
+# Wyjątki do powyższych reguł
+!default.mode1v3
+!default.mode2v3
+!default.pbxuser
+!default.perspectivev3

@@ -1,0 +1,116 @@
+Flutter crash report.
+Please report a bug at https://github.com/flutter/flutter/issues.
+
+## command
+
+flutter run
+
+## exception
+
+ProcessException: ProcessException: No such file or directory
+  Command: google-chrome http://127.0.0.1:9100?uri=http%3A%2F%2F127.0.0.1%3A38957%2Fur6h0Zm4lz4%3D%2F
+
+```
+#0      _ProcessImpl._start (dart:io-patch/process_patch.dart:422:33)
+#1      Process.start (dart:io-patch/process_patch.dart:42:20)
+#2      Chrome._startProcess (package:browser_launcher/src/chrome.dart:177:26)
+#3      Chrome.start (package:browser_launcher/src/chrome.dart:170:13)
+#4      FlutterResidentDevtoolsHandler._launchDevToolsForDevices (package:flutter_tools/src/resident_devtools_handler.dart:178:24)
+#5      FlutterResidentDevtoolsHandler.launchDevToolsInBrowser (package:flutter_tools/src/resident_devtools_handler.dart:166:7)
+#6      TerminalHandler._commonTerminalInputHandler (package:flutter_tools/src/resident_runner.dart:1764:56)
+#7      TerminalHandler.processTerminalInput (package:flutter_tools/src/resident_runner.dart:1782:13)
+#8      _rootRunUnary (dart:async/zone.dart:1538:47)
+#9      _CustomZone.runUnary (dart:async/zone.dart:1429:19)
+#10     _CustomZone.runUnaryGuarded (dart:async/zone.dart:1329:7)
+#11     _BufferingStreamSubscription._sendData (dart:async/stream_impl.dart:381:11)
+#12     _BufferingStreamSubscription._add (dart:async/stream_impl.dart:312:7)
+#13     _SyncBroadcastStreamController._sendData (dart:async/broadcast_stream_controller.dart:389:25)
+#14     _BroadcastStreamController.add (dart:async/broadcast_stream_controller.dart:257:5)
+#15     _AsBroadcastStreamController.add (dart:async/broadcast_stream_controller.dart:492:11)
+#16     _rootRunUnary (dart:async/zone.dart:1538:47)
+#17     _CustomZone.runUnary (dart:async/zone.dart:1429:19)
+#18     _CustomZone.runUnaryGuarded (dart:async/zone.dart:1329:7)
+#19     _BufferingStreamSubscription._sendData (dart:async/stream_impl.dart:381:11)
+#20     _BufferingStreamSubscription._add (dart:async/stream_impl.dart:312:7)
+#21     _SinkTransformerStreamSubscription._add (dart:async/stream_transformers.dart:67:11)
+#22     _EventSinkWrapper.add (dart:async/stream_transformers.dart:13:11)
+#23     _StringAdapterSink.add (dart:convert/string_conversion.dart:228:11)
+#24     _StringAdapterSink.addSlice (dart:convert/string_conversion.dart:233:7)
+#25     _Utf8ConversionSink.addSlice (dart:convert/string_conversion.dart:313:20)
+#26     _ErrorHandlingAsciiDecoderSink.addSlice (dart:convert/ascii.dart:286:17)
+#27     _ErrorHandlingAsciiDecoderSink.add (dart:convert/ascii.dart:272:5)
+#28     _ConverterStreamEventSink.add (dart:convert/chunked_conversion.dart:70:18)
+#29     _SinkTransformerStreamSubscription._handleData (dart:async/stream_transformers.dart:115:24)
+#30     _rootRunUnary (dart:async/zone.dart:1538:47)
+#31     _CustomZone.runUnary (dart:async/zone.dart:1429:19)
+#32     _CustomZone.runUnaryGuarded (dart:async/zone.dart:1329:7)
+#33     _BufferingStreamSubscription._sendData (dart:async/stream_impl.dart:381:11)
+#34     _BufferingStreamSubscription._add (dart:async/stream_impl.dart:312:7)
+#35     _SyncStreamControllerDispatch._sendData (dart:async/stream_controller.dart:798:19)
+#36     _StreamController._add (dart:async/stream_controller.dart:663:7)
+#37     _StreamController.add (dart:async/stream_controller.dart:618:5)
+#38     _Socket._onData (dart:io-patch/socket_patch.dart:2904:41)
+#39     _rootRunUnary (dart:async/zone.dart:1546:13)
+#40     _CustomZone.runUnary (dart:async/zone.dart:1429:19)
+#41     _CustomZone.runUnaryGuarded (dart:async/zone.dart:1329:7)
+#42     _BufferingStreamSubscription._sendData (dart:async/stream_impl.dart:381:11)
+#43     _BufferingStreamSubscription._add (dart:async/stream_impl.dart:312:7)
+#44     _SyncStreamControllerDispatch._sendData (dart:async/stream_controller.dart:798:19)
+#45     _StreamController._add (dart:async/stream_controller.dart:663:7)
+#46     _StreamController.add (dart:async/stream_controller.dart:618:5)
+#47     new _RawSocket.<anonymous closure> (dart:io-patch/socket_patch.dart:2323:31)
+#48     _NativeSocket.issueReadEvent.issue (dart:io-patch/socket_patch.dart:1646:14)
+#49     _microtaskLoop (dart:async/schedule_microtask.dart:40:21)
+#50     _startMicrotaskLoop (dart:async/schedule_microtask.dart:49:5)
+#51     _runPendingImmediateCallback (dart:isolate-patch/isolate_patch.dart:128:13)
+#52     _RawReceivePort._handleMessage (dart:isolate-patch/isolate_patch.dart:195:5)
+```
+
+## flutter doctor
+
+```
+[32m[✓][39m Flutter (Channel beta, 3.28.0-0.1.pre, on IDX GNU/Linux 6.6.72+, locale en_US.UTF-8)
+    [32m•[39m Flutter version 3.28.0-0.1.pre on channel beta at /home/user/flutter
+    [32m•[39m Upstream repository https://github.com/flutter/flutter.git
+    [32m•[39m Framework revision 3e493a3e4d (5 months ago), 2024-12-12 05:59:24 +0900
+    [32m•[39m Engine revision 2ba456fd7f
+    [32m•[39m Dart version 3.7.0 (build 3.7.0-209.1.beta)
+    [32m•[39m DevTools version 2.41.0
+
+[33m[!][39m Android toolchain - develop for Android devices (Android SDK version 34.0.0)
+    [32m•[39m Android SDK at /home/user/.androidsdkroot
+    [32m•[39m Platform android-35, build-tools 34.0.0
+    [32m•[39m ANDROID_SDK_ROOT = /home/user/.androidsdkroot
+    [32m•[39m Java binary at: /usr/bin/java
+      This JDK was found in the system PATH.
+      To manually set the JDK path, use: `flutter config --jdk-dir="path/to/jdk"`.
+    [32m•[39m Java version OpenJDK Runtime Environment (build 17.0.7+7-nixos)
+    [33m![39m Some Android licenses not accepted. To resolve this, run: flutter doctor --android-licenses
+
+[31m[✗][39m Chrome - develop for the web (Cannot find Chrome executable at google-chrome)
+    [33m![39m Cannot find Chrome. Try setting CHROME_EXECUTABLE to a Chrome executable.
+
+[31m[✗][39m Linux toolchain - develop for Linux desktop
+    [31m✗[39m clang++ is required for Linux development.
+      It is likely available from your distribution (e.g.: apt install clang), or can be downloaded from https://releases.llvm.org/
+    [31m✗[39m CMake is required for Linux development.
+      It is likely available from your distribution (e.g.: apt install cmake), or can be downloaded from https://cmake.org/download/
+    [31m✗[39m ninja is required for Linux development.
+      It is likely available from your distribution (e.g.: apt install ninja-build), or can be downloaded from https://github.com/ninja-build/ninja/releases
+    [31m✗[39m pkg-config is required for Linux development.
+      It is likely available from your distribution (e.g.: apt install pkg-config), or can be downloaded from https://www.freedesktop.org/wiki/Software/pkg-config/
+
+[33m[!][39m Android Studio (not installed)
+    [32m•[39m Android Studio not found; download from https://developer.android.com/studio/index.html
+      (or visit https://flutter.dev/to/linux-android-setup for detailed instructions).
+
+[32m[✓][39m Connected device (3 available)
+    [32m•[39m sdk gphone64 x86 64 (mobile) • emulator-5554  • android-x64 • Android 14 (API 34) (emulator)
+    [32m•[39m sdk gphone64 x86 64 (mobile) • localhost:5555 • android-x64 • Android 14 (API 34) (emulator)
+    [32m•[39m Linux (desktop)              • linux          • linux-x64   • IDX GNU/Linux 6.6.72+
+
+[32m[✓][39m Network resources
+    [32m•[39m All expected network resources are available.
+
+[33m![39m Doctor found issues in 4 categories.
+```
