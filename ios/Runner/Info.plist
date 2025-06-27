@@ -47,5 +47,7 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>NSPhotoLibraryUsageDescription</key>
+<string>Aplikacja potrzebuje dostępu do galerii, abyś mógł wybrać swoje zdjęcie profilowe.</string>
 </dict>
 </plist>

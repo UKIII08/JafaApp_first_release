@@ -1,47 +1,39 @@
-// index.js – wersja kompatybilna z firebase-functions v6.x+
+// index.js – wersja kompatybilna z firebase-functions v2.x+
 
-// Import modułów Firebase Functions v2 i Admin SDK
 const functions = require("firebase-functions");
 const { onDocumentCreated } = require("firebase-functions/v2/firestore");
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
+const { onSchedule } = require("firebase-functions/v2/scheduler");
 const { initializeApp } = require("firebase-admin/app");
-const { getFirestore } = require("firebase-admin/firestore");
+const { getFirestore, FieldValue } = require("firebase-admin/firestore");
 const { getMessaging } = require("firebase-admin/messaging");
 
-// Inicjalizacja Firebase Admin SDK
 initializeApp();
 
-// Logger z v6+ (functions.logger)
 const logger = functions.logger;
+const db = getFirestore();
 
 // --- Konfiguracja ---
-const REGION = "europe-west10"; // Zaktualizuj, jeśli Twój region jest inny
+const REGION = "europe-west3";
 const MEMORY = "256MiB";
-const TIMEOUT = 60; // sekundy
+const TIMEOUT = 60;
 
-// --- Funkcje pomocnicze ---
+// --- Funkcje pomocnicze (istniejące) ---
 async function getFilteredFcmTokens(targetRole, logContext) {
   logger.debug(`[${logContext}] Pobieranie tokenów dla roli: ${targetRole || "wszyscy"}`);
   const tokens = new Set();
   try {
-    const usersRef = getFirestore().collection("users");
+    const usersRef = db.collection("users");
     const allUsersSnapshot = await usersRef.get();
 
     allUsersSnapshot.forEach((doc) => {
       const user = doc.data();
-      // Dostosowanie do targetRole - jeśli targetRole jest zdefiniowany, sprawdzamy, czy pole 'roles' (string) użytkownika mu odpowiada.
-      // Jeśli targetRole nie jest zdefiniowany (wysyłka do wszystkich), to dodajemy tokeny, jeśli użytkownik ma jakiekolwiek.
-      // UWAGA: Poniższa logika zakłada, że jeśli `targetRole` jest podany w `getFilteredFcmTokens`,
-      // to `user.roles` (które jest stringiem) powinno być równe `targetRole`.
-      // Jeśli `targetRole` jest dla "wszystkich", to `user.roles` nie jest filtrowane.
-      let roleMatch = !targetRole; // Jeśli nie ma targetRole, pasuje (wszyscy)
-      if (targetRole && typeof user.roles === 'string' && user.roles === targetRole) {
-        roleMatch = true;
-      }
+      const roles = user.roles;
+      const roleMatch = !targetRole || (Array.isArray(roles) && roles.includes(targetRole));
 
       if (
         user &&
-        roleMatch && // Używamy roleMatch do filtrowania
+        roleMatch &&
         Array.isArray(user.fcmTokens) &&
         user.fcmTokens.length > 0
       ) {
@@ -61,218 +53,242 @@ async function getFilteredFcmTokens(targetRole, logContext) {
 }
 
 async function sendFcmNotifications(tokens, notification, data = {}, logContext) {
-  if (!Array.isArray(tokens) || tokens.length === 0) {
-    logger.info(`[${logContext}] Brak tokenów do wysłania.`);
-    return { successCount: 0, failureCount: 0, responses: [] };
-  }
-
-  logger.info(`[${logContext}] Wysyłanie do ${tokens.length} tokenów.`);
-
-  const messagePayload = {
-    tokens: tokens,
-    notification: notification,
-    data: data,
-  };
-
-  try {
-    const response = await getMessaging().sendEachForMulticast(messagePayload);
-    logger.info(`[${logContext}] FCM: Sukcesy=${response.successCount}, Błędy=${response.failureCount}`);
-
-    if (response.failureCount > 0 && Array.isArray(response.responses)) {
-      response.responses.forEach((resp, idx) => {
-        if (resp && resp.success === false) {
-          const failedToken = tokens[idx] || `unknown_token_${idx}`;
-          let errorCode = "UNKNOWN_CODE";
-          let errorMessage = "Unknown error";
-
-          if (resp.error && typeof resp.error === 'object') {
-            errorCode = resp.error.code || errorCode;
-            errorMessage = resp.error.message || errorMessage;
-          }
-          logger.warn(`[${logContext}] Błąd tokenu ${failedToken}: [${errorCode}] ${errorMessage}`);
-        }
-      });
+    if (!Array.isArray(tokens) || tokens.length === 0) {
+      logger.info(`[${logContext}] Brak tokenów do wysłania.`);
+      return { successCount: 0, failureCount: 0, responses: [] };
     }
-    return response;
-  } catch (error) {
-    logger.error(`[${logContext}] Błąd krytyczny przy FCM: ${error.message}`, error);
-    throw error;
-  }
+  
+    logger.info(`[${logContext}] Wysyłanie do ${tokens.length} tokenów.`);
+  
+    const messagePayload = {
+      tokens: tokens,
+      notification: notification,
+      data: data,
+    };
+  
+    try {
+      const response = await getMessaging().sendEachForMulticast(messagePayload);
+      logger.info(`[${logContext}] FCM: Sukcesy=${response.successCount}, Błędy=${response.failureCount}`);
+  
+      if (response.failureCount > 0 && Array.isArray(response.responses)) {
+        response.responses.forEach((resp, idx) => {
+          if (resp && resp.success === false) {
+            const failedToken = tokens[idx] || `unknown_token_${idx}`;
+            const errorCode = resp.error?.code || "UNKNOWN_CODE";
+            const errorMessage = resp.error?.message || "Unknown error";
+            logger.warn(`[${logContext}] Błąd tokenu ${failedToken}: [${errorCode}] ${errorMessage}`);
+          }
+        });
+      }
+      return response;
+    } catch (error) {
+      logger.error(`[${logContext}] Błąd krytyczny przy FCM: ${error.message}`, error);
+      throw error;
+    }
 }
 
-// --- Funkcje główne ---
+
+// --- Funkcje główne (istniejące) ---
 
 exports.sendNotificationOnCreate = onDocumentCreated(
-  {
-    region: REGION,
-    document: "{collection}/{documentId}",
-    memory: MEMORY,
-    timeoutSeconds: TIMEOUT,
-  },
+  { region: REGION, document: "{collection}/{documentId}", memory: MEMORY, timeoutSeconds: TIMEOUT },
   async (event) => {
     const collection = event.params.collection;
     const documentId = event.params.documentId;
     const logContext = `sendNotificationOnCreate/${collection}/${documentId}`;
-
     logger.info(`[${logContext}] Funkcja wywołana.`);
 
     try {
       const handledCollections = ['ogloszenia', 'aktualnosci', 'events'];
       if (!handledCollections.includes(collection)) {
-        logger.debug(`[${logContext}] Pomijam kolekcję '${collection}' (nieobsługiwana).`);
         return;
       }
-
       const docData = event.data?.data();
       if (!docData) {
-        logger.warn(`[${logContext}] Brak danych w dokumencie.`);
         return;
       }
-
       let title = docData.title || "Nowa informacja";
       let body = "Sprawdź szczegóły";
-      // Dla sendNotificationOnCreate, rola docelowa jest określana przez `docData.rolaDocelowa`
-      // lub jest wysyłana do wszystkich, jeśli `rolaDocelowa` nie jest zdefiniowana.
-      // Funkcja getFilteredFcmTokens obsłuży to odpowiednio.
-      let targetRole = docData.rolaDocelowa; // Może być stringiem lub undefined
-
-      if (collection === 'ogloszenia') {
-        title = docData.title || "Nowe ogłoszenie";
-        body = docData.content || body;
-        // targetRole już ustawione z docData.rolaDocelowa
-      } else if (collection === 'aktualnosci') {
-        title = docData.title || "Nowe aktualności";
-        body = docData.content || body;
-        targetRole = undefined; // Aktualności idą do wszystkich
-      } else if (collection === 'events') {
-        title = docData.title || "Nowe wydarzenie";
-        body = docData.description || body;
-        targetRole = undefined; // Wydarzenia idą do wszystkich
+      let targetRole = docData.rolaDocelowa;
+      if (collection !== 'ogloszenia') {
+        targetRole = undefined;
       }
-
-      logger.info(`[${logContext}] Przygotowanie powiadomienia: Tytuł='${title}', Rola docelowa='${targetRole || 'wszyscy'}'`);
-
       const notificationPayload = { title, body };
       const dataPayload = { sourceCollection: collection, sourceDocId: documentId, click_action: "FLUTTER_NOTIFICATION_CLICK" };
-
       const tokens = await getFilteredFcmTokens(targetRole, logContext);
-
       if (tokens.length > 0) {
         await sendFcmNotifications(tokens, notificationPayload, dataPayload, logContext);
-      } else {
-        logger.info(`[${logContext}] Brak tokenów do wysyłki dla roli '${targetRole || 'wszyscy'}'`);
       }
-
-      logger.info(`[${logContext}] Zakończono przetwarzanie.`);
     } catch (error) {
-      logger.error(`[${logContext}] Nieobsłużony błąd w sendNotificationOnCreate: ${error.message}`, error);
+      logger.error(`[${logContext}] Nieobsłużony błąd:`, error);
     }
   }
 );
 
 exports.sendManualNotification = onCall(
-  {
-    region: REGION,
-    memory: MEMORY,
-    timeoutSeconds: TIMEOUT,
-    // enforceAppCheck: true, // Rozważ włączenie Firebase App Check
-  },
+  { region: REGION, memory: MEMORY, timeoutSeconds: TIMEOUT },
   async (request) => {
     const logContext = "sendManualNotification";
-    logger.info(`[${logContext}] Otrzymano żądanie.`);
-
-    // 1. Sprawdzenie autentykacji
     if (!request.auth) {
-      logger.warn(`[${logContext}] Próba wywołania przez nieuwierzytelnionego użytkownika.`);
-      throw new HttpsError(
-        "unauthenticated",
-        "Musisz być zalogowany, aby wysłać powiadomienie."
-      );
+      throw new HttpsError("unauthenticated", "Musisz być zalogowany.");
     }
-
     const uid = request.auth.uid;
-    logger.info(`[${logContext}] Żądanie od uwierzytelnionego użytkownika: ${uid}`);
-
-    // 2. Sprawdzenie autoryzacji (czy użytkownik ma pole roles: "Admin" w Firestore)
-    let isAdmin = false;
-    logger.info(`[${logContext}] Sprawdzanie roli "Admin" w Firestore dla użytkownika ${uid}.`);
-    try {
-      const userDocRef = getFirestore().collection("users").doc(uid);
-      const userDoc = await userDocRef.get();
-
-      if (userDoc.exists) {
-        const userData = userDoc.data();
-        // Sprawdzamy, czy pole 'roles' istnieje, jest stringiem i jest równe "Admin"
-        // Ważna jest wielkość liter "Admin" - jeśli w bazie jest inaczej, trzeba dostosować.
-        if (userData.roles && typeof userData.roles === 'string' && userData.roles === 'Admin') {
-          isAdmin = true;
-          logger.info(`[${logContext}] Użytkownik ${uid} zidentyfikowany jako admin na podstawie pola roles: "${userData.roles}" w Firestore.`);
-        } else {
-          logger.warn(`[${logContext}] Użytkownik ${uid} nie jest administratorem. Wartość pola 'roles': "${userData.roles === undefined ? 'undefined' : userData.roles}".`);
-        }
-      } else {
-        logger.warn(`[${logContext}] Nie znaleziono dokumentu użytkownika dla UID: ${uid} w Firestore w kolekcji 'users'.`);
-      }
-    } catch (error) {
-      logger.error(`[${logContext}] Błąd podczas sprawdzania roli "Admin" w Firestore dla ${uid}: ${error.message}`, error);
-      throw new HttpsError("internal", "Błąd serwera podczas weryfikacji uprawnień.");
+    const userDoc = await db.collection("users").doc(uid).get();
+    const roles = userDoc.data()?.roles;
+    if (!Array.isArray(roles) || !roles.includes("Admin")) {
+      throw new HttpsError("permission-denied", "Brak uprawnień administratora.");
     }
-
-    if (!isAdmin) {
-      logger.error(`[${logContext}] Użytkownik ${uid} nie jest administratorem (wymagane pole roles: "Admin" w Firestore). Odmowa dostępu.`);
-      throw new HttpsError(
-        "permission-denied",
-        "Nie masz uprawnień do wykonania tej operacji. Wymagana rola: Admin."
-      );
-    }
-
-    logger.info(`[${logContext}] Użytkownik ${uid} jest autoryzowany jako administrator.`);
-
-    // Walidacja danych wejściowych
-    const { title, body, targetRole } = request.data || {}; // targetRole to string roli, do której wysyłamy, lub undefined/null dla wszystkich
-
+    const { title, body, targetRole } = request.data || {};
     if (!title || typeof title !== 'string' || title.trim() === '') {
-      logger.error(`[${logContext}] Nieprawidłowy tytuł od admina ${uid}.`, { data: request.data });
-      throw new HttpsError('invalid-argument', 'Pole "title" jest wymagane i musi być niepustym tekstem.');
+      throw new HttpsError('invalid-argument', 'Pole "title" jest wymagane.');
     }
-
     if (!body || typeof body !== 'string' || body.trim() === '') {
-      logger.error(`[${logContext}] Nieprawidłowa treść od admina ${uid}.`, { data: request.data });
-      throw new HttpsError('invalid-argument', 'Pole "body" jest wymagane i musi być niepustym tekstem.');
+      throw new HttpsError('invalid-argument', 'Pole "body" jest wymagane.');
     }
-
-    logger.info(`[${logContext}] Administrator ${uid} wysyła manualne powiadomienie: Tytuł='${title}', Treść='${body}', Rola docelowa='${targetRole || 'wszyscy'}'`);
-
     try {
       const notificationPayload = { title: title.trim(), body: body.trim() };
       const dataPayload = { triggeredBy: 'manual_admin', adminUid: uid, click_action: "FLUTTER_NOTIFICATION_CLICK" };
-
-      // targetRole przekazany z request.data jest używany do filtrowania tokenów
-      const tokens = await getFilteredFcmTokens(targetRole, `${logContext} (admin: ${uid})`);
-
-      let fcmResponse = { successCount: 0, failureCount: 0 };
-      if (tokens.length > 0) {
-        fcmResponse = await sendFcmNotifications(tokens, notificationPayload, dataPayload, `${logContext} (admin: ${uid})`);
-      } else {
-        logger.info(`[${logContext}] Brak tokenów dla wskazanej roli ('${targetRole || 'wszyscy'}') przez admina ${uid}.`);
-      }
-
+      const tokens = await getFilteredFcmTokens(targetRole, logContext);
+      const fcmResponse = tokens.length > 0 ? await sendFcmNotifications(tokens, notificationPayload, dataPayload, logContext) : { successCount: 0, failureCount: 0 };
       return {
         success: true,
-        message: `Powiadomienie zostało przetworzone. Sukcesy=${fcmResponse.successCount}, Błędy=${fcmResponse.failureCount}.`,
-        details: {
-          successCount: fcmResponse.successCount,
-          failureCount: fcmResponse.failureCount,
-          targetedTokensCount: tokens.length,
-          requestedRole: targetRole || 'wszyscy',
-        },
+        message: `Powiadomienie przetworzone. Sukcesy=${fcmResponse.successCount}, Błędy=${fcmResponse.failureCount}.`,
       };
     } catch (error) {
-      logger.error(`[${logContext}] Błąd podczas wysyłki manualnego powiadomienia przez admina ${uid}: ${error.message || String(error)}`, error);
-      if (error instanceof HttpsError) {
-        throw error;
-      }
-      throw new HttpsError('internal', 'Wewnętrzny błąd serwera podczas wysyłania powiadomienia.');
+      logger.error(`[${logContext}] Błąd wysyłki admina ${uid}:`, error);
+      throw new HttpsError('internal', 'Wewnętrzny błąd serwera.');
     }
   }
 );
+
+exports.sendBirthdayNotifications = onSchedule(
+  { schedule: "every day 09:00", timeZone: "Europe/Warsaw", region: REGION },
+  async (event) => {
+    const today = new Date();
+    const day = today.getDate();
+    const month = today.getMonth() + 1;
+    const logContext = `sendBirthdayNotifications`;
+    logger.info(`[${logContext}] Sprawdzanie urodzin dla: ${day}/${month}`);
+    const usersRef = db.collection("users");
+    const birthdayUsersSnap = await usersRef.where("birthMonth", "==", month).where("birthDay", "==", day).get();
+    if (birthdayUsersSnap.empty) {
+      return null;
+    }
+    const allUsersSnap = await usersRef.get();
+    const allTokens = new Set();
+    allUsersSnap.forEach(doc => {
+      const user = doc.data();
+      if (user.fcmTokens && Array.isArray(user.fcmTokens)) {
+        user.fcmTokens.forEach(token => allTokens.add(token));
+      }
+    });
+    const tokensToSend = Array.from(allTokens);
+    if (tokensToSend.length === 0) {
+      return null;
+    }
+    for (const userDoc of birthdayUsersSnap.docs) {
+      const birthdayUser = userDoc.data();
+      const userName = birthdayUser.displayName || 'Ktoś z naszej wspólnoty';
+      const notificationPayload = { title: '🎉 Wszystkiego najlepszego! 🎉', body: `Dziś urodziny świętuje ${userName}! Złóż życzenia!` };
+      const dataPayload = { type: 'BIRTHDAY', userId: userDoc.id, click_action: "FLUTTER_NOTIFICATION_CLICK" };
+      await sendFcmNotifications(tokensToSend, notificationPayload, dataPayload, logContext);
+    }
+    return null;
+  }
+);
+
+
+// <<< NOWA FUNKCJA DO AKTUALIZACJI ZNACZNIKA CZASU >>>
+exports.updateBirthdayWallTimestamp = onDocumentCreated(
+  {
+    region: REGION,
+    document: "birthdayWishes/{userId}/wishes/{wishId}",
+  },
+  async (event) => {
+    const userId = event.params.userId;
+    const logContext = `updateBirthdayWallTimestamp/${userId}`;
+    logger.info(`[${logContext}] Nowe życzenie dodane. Aktualizowanie znacznika czasu.`);
+
+    const wallRef = db.collection("birthdayWishes").doc(userId);
+    try {
+      await wallRef.set({
+        lastUpdated: FieldValue.serverTimestamp(),
+      }, { merge: true });
+      logger.info(`[${logContext}] Znacznik czasu zaktualizowany pomyślnie.`);
+    } catch (error) {
+      logger.error(`[${logContext}] Błąd podczas aktualizacji znacznika czasu:`, error);
+    }
+  }
+);
+
+// <<< NOWA FUNKCJA DO AUTOMATYCZNEGO CZYSZCZENIA >>>
+exports.cleanupOldWishes = onSchedule(
+  {
+    schedule: "every day 03:00",
+    timeZone: "Europe/Warsaw",
+    region: REGION,
+  },
+  async (event) => {
+    const logContext = "cleanupOldWishes";
+    logger.info(`[${logContext}] Rozpoczynanie czyszczenia starych tablic życzeń.`);
+
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    
+    const oldWallsQuery = db.collection("birthdayWishes").where("lastUpdated", "<=", sevenDaysAgo);
+    
+    try {
+      const snapshot = await oldWallsQuery.get();
+      if (snapshot.empty) {
+        logger.info(`[${logContext}] Nie znaleziono starych tablic do usunięcia.`);
+        return null;
+      }
+
+      logger.info(`[${logContext}] Znaleziono ${snapshot.size} starych tablic do usunięcia.`);
+      
+      const promises = [];
+      snapshot.forEach(doc => {
+        promises.push(deleteCollection(db, `birthdayWishes/${doc.id}/wishes`, 100).then(() => {
+          logger.info(`[${logContext}] Usunięto subkolekcję życzeń dla ${doc.id}.`);
+          return doc.ref.delete();
+        }));
+      });
+
+      await Promise.all(promises);
+      logger.info(`[${logContext}] Zakończono czyszczenie pomyślnie.`);
+
+    } catch (error) {
+      logger.error(`[${logContext}] Wystąpił błąd podczas czyszczenia:`, error);
+    }
+    return null;
+  }
+);
+
+// Funkcja pomocnicza do usuwania całej kolekcji (niezbędna)
+async function deleteCollection(db, collectionPath, batchSize) {
+  const collectionRef = db.collection(collectionPath);
+  const query = collectionRef.orderBy('__name__').limit(batchSize);
+
+  return new Promise((resolve, reject) => {
+    deleteQueryBatch(db, query, resolve).catch(reject);
+  });
+}
+
+async function deleteQueryBatch(db, query, resolve) {
+  const snapshot = await query.get();
+
+  if (snapshot.size === 0) {
+    return resolve();
+  }
+
+  const batch = db.batch();
+  snapshot.docs.forEach((doc) => {
+    batch.delete(doc.ref);
+  });
+
+  await batch.commit();
+
+  process.nextTick(() => {
+    deleteQueryBatch(db, query, resolve);
+  });
+}
