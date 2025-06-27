@@ -18,7 +18,7 @@ import 'informacje_screen.dart';
 import 'library_screen.dart';
 import 'jafa_games_screen.dart';
 import 'profile_screen.dart';
-import 'small_group_screen.dart';
+import 'small_group_screen.dart'; // Upewnij się, że ten plik istnieje i przyjmuje groupId
 
 // Importy pomocnicze
 import 'widgets/glowing_card_wrapper.dart';
@@ -50,12 +50,60 @@ class _HomeScreenState extends State<HomeScreen> {
     FirebaseMessaging.onMessage.listen((RemoteMessage message) { print('[FCM] Got a message whilst in the foreground!'); print('[FCM] Message data: ${message.data}'); if (message.notification != null) { print('[FCM] Message also contained a notification: ${message.notification?.title}'); if (mounted) { showDialog( context: context, builder: (context) => AlertDialog( title: Text(message.notification?.title ?? 'Nowe powiadomienie'), content: Text(message.notification?.body ?? ''), actions: [ TextButton( onPressed: () => Navigator.of(context).pop(), child: const Text('OK'), ), ], ), ); } } });
     RemoteMessage? initialMessage = await messaging.getInitialMessage(); if (initialMessage != null) { print('[FCM] App opened from terminated state by notification: ${initialMessage.messageId}'); _handleMessageTap(initialMessage); } FirebaseMessaging.onMessageOpenedApp.listen(_handleMessageTap);
   }
-  
+ 
   Future<void> _saveTokenToDatabase(String? token) async { if (token == null) return; final userId = FirebaseAuth.instance.currentUser?.uid; if (userId == null) return; print("[FCM] Saving token for user $userId"); try { await FirebaseFirestore.instance.collection('users').doc(userId).set({ 'fcmTokens': FieldValue.arrayUnion([token]), }, SetOptions(merge: true)); print("[FCM] Token saved successfully."); } catch (e) { print("[FCM] Error saving token: $e"); } }
-  
+ 
   void _handleMessageTap(RemoteMessage message) { print('[FCM] Notification tapped! Message ID: ${message.messageId}'); print('[FCM] Message data: ${message.data}'); /* TODO: Implement navigation based on message data */ }
 
   Future<void> _handleRefresh() async { await Future.delayed(const Duration(seconds: 1)); if (mounted) { setState(() { }); } }
+
+  // <<< NOWA FUNKCJA DO ZNAJDOWANIA I NAWIGOWANIA DO GRUPY >>>
+  Future<void> _navigateToMyGroup() async {
+    final user = _auth.currentUser;
+    if (user == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Musisz być zalogowany, aby zobaczyć grupę.')));
+      return;
+    }
+
+    // Pokaż wskaźnik ładowania, aby użytkownik wiedział, że coś się dzieje
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) => const Center(child: CircularProgressIndicator()),
+    );
+
+    try {
+      final querySnapshot = await _firestore
+          .collection('smallGroups')
+          .where('members', arrayContains: user.uid)
+          .limit(1)
+          .get();
+
+      if (mounted) {
+        Navigator.of(context).pop(); // Zamknij wskaźnik ładowania
+      }
+
+      if (querySnapshot.docs.isNotEmpty) {
+        final groupId = querySnapshot.docs.first.id;
+        if (mounted) {
+          Navigator.push(
+            context,
+            // Przekazujemy znalezione groupId do SmallGroupScreen
+            MaterialPageRoute(builder: (context) => SmallGroupScreen(groupId: groupId)),
+          );
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Nie jesteś przypisany do żadnej małej grupy.')));
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        Navigator.of(context).pop(); // Zamknij wskaźnik ładowania w razie błędu
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Wystąpił błąd podczas wyszukiwania grupy: $e')));
+      }
+    }
+  }
 
   Widget _buildNewsItemShimmer(BuildContext context) { return Container( margin: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 4.0), padding: const EdgeInsets.all(16.0), decoration: BoxDecoration( color: Colors.white, borderRadius: BorderRadius.circular(15.0), boxShadow: [ BoxShadow( color: Colors.black.withOpacity(0.05), spreadRadius: 1, blurRadius: 4, offset: const Offset(0, 2), ), ], ), child: Shimmer.fromColors( baseColor: Colors.grey[300]!, highlightColor: Colors.grey[100]!, child: Column( crossAxisAlignment: CrossAxisAlignment.start, children: [ Container( width: double.infinity, height: 150.0, decoration: BoxDecoration( color: Colors.grey[300], borderRadius: BorderRadius.circular(10.0), ), ), const SizedBox(height: 12), Container( width: double.infinity, height: 20.0, decoration: BoxDecoration( color: Colors.grey[300], borderRadius: BorderRadius.circular(4.0), ), ), const SizedBox(height: 8), Container( width: double.infinity, height: 14.0, decoration: BoxDecoration( color: Colors.grey[300], borderRadius: BorderRadius.circular(4.0), ), ), const SizedBox(height: 6), Container( width: MediaQuery.of(context).size.width * 0.7, height: 14.0, decoration: BoxDecoration( color: Colors.grey[300], borderRadius: BorderRadius.circular(4.0), ), ), const SizedBox(height: 12), Align( alignment: Alignment.centerRight, child: Container( width: 100.0, height: 12.0, decoration: BoxDecoration( color: Colors.grey[300], borderRadius: BorderRadius.circular(4.0), ), ), ), ], ), ), ); }
 
@@ -165,14 +213,15 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
             ),
-            
+           
             // --- NOWA KOLEJNOŚĆ W MENU ---
             ListTile(
               leading: const Icon(Icons.groups_outlined),
               title: const Text("Mała Grupa"),
               onTap: () {
-                Navigator.pop(context);
-                Navigator.push(context, MaterialPageRoute(builder: (context) => const SmallGroupScreen()));
+                Navigator.pop(context); // Zamknij drawer przed nawigacją
+                // <<< ZMIANA: WYWOŁANIE NOWEJ FUNKCJI >>>
+                _navigateToMyGroup();
               },
             ),
             ListTile(
@@ -207,7 +256,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 Navigator.push(context, MaterialPageRoute(builder: (context) => const LibraryScreen()));
               },
             ),
-             ListTile(
+              ListTile(
               leading: const Icon(Icons.sports_esports_outlined),
               title: const Text("Jafa Games"),
               onTap: () async {

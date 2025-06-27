@@ -50,7 +50,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       return;
     }
     try {
-      final docSnap = await FirebaseFirestore.instance.collection('users').doc(_currentUser!.uid).get();
+      final docSnap = await FirebaseFirestore.instance.collection('users').doc(_currentUser.uid).get();
       if (docSnap.exists) {
         final data = docSnap.data()!;
         setState(() {

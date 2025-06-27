@@ -71,7 +71,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           : StreamBuilder<DocumentSnapshot>(
               stream: FirebaseFirestore.instance
                   .collection('users')
-                  .doc(_currentUser!.uid)
+                  .doc(_currentUser.uid)
                   .snapshots(),
               builder: (context, snapshot) {
                 if (!snapshot.hasData) {
@@ -79,8 +79,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 }
 
                 final userData = snapshot.data?.data() as Map<String, dynamic>? ?? {};
-                final displayName = _currentUser!.displayName ?? 'Brak nazwy';
-                final photoURL = userData['photoURL'] ?? _currentUser!.photoURL;
+                final displayName = _currentUser.displayName ?? 'Brak nazwy';
+                final photoURL = userData['photoURL'] ?? _currentUser.photoURL;
                 final birthDate = userData['birthDate'] as Timestamp?;
 
                 // Sprawdzamy, czy dzisiaj są urodziny
@@ -130,7 +130,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               context,
                               MaterialPageRoute(
                                 builder: (context) => BirthdayWallScreen(
-                                  birthdayUserId: _currentUser!.uid,
+                                  birthdayUserId: _currentUser.uid,
                                 ),
                               ),
                             );

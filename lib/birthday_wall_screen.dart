@@ -21,8 +21,8 @@ class _BirthdayWallScreenState extends State<BirthdayWallScreen> {
   Future<void> _sendWish() async {
     if (_wishController.text.trim().isEmpty || _currentUser == null) return;
 
-    final wisherName = _currentUser!.displayName ?? 'Anonim';
-    final wisherPhoto = _currentUser!.photoURL;
+    final wisherName = _currentUser.displayName ?? 'Anonim';
+    final wisherPhoto = _currentUser.photoURL;
 
     await FirebaseFirestore.instance
         .collection('birthdayWishes')
@@ -30,7 +30,7 @@ class _BirthdayWallScreenState extends State<BirthdayWallScreen> {
         .collection('wishes')
         .add({
       'message': _wishController.text.trim(),
-      'wisherId': _currentUser!.uid,
+      'wisherId': _currentUser.uid,
       'wisherName': wisherName,
       'wisherPhotoURL': wisherPhoto,
       'timestamp': FieldValue.serverTimestamp(),
