@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../game/motorboat_game.dart';
 // Import ekranu rankingu z folderu lib/game/
 import '../game/leaderboard_screen.dart';
+import 'package:audioplayers/audioplayers.dart';
 
 
 class JafaGamesScreen extends StatefulWidget {
@@ -19,11 +20,42 @@ class _JafaGamesScreenState extends State<JafaGamesScreen> {
   // Przechowujemy instancję gry, aby nie tworzyć jej za każdym razem
   late final MotorboatGame _gameInstance;
 
+  // <<< POCZĄTEK KODU DLA MUZYKI >>>
+
+  // 1. Stwórz instancję odtwarzacza audio
+  final AudioPlayer _audioPlayer = AudioPlayer();
+
   @override
   void initState() {
     super.initState();
     _gameInstance = MotorboatGame();
+    // 2. Uruchom muzykę, gdy ekran jest inicjowany
+    _playBackgroundMusic();
   }
+
+  Future<void> _playBackgroundMusic() async {
+    try {
+      // Ustaw pętlę, aby muzyka grała w kółko
+      await _audioPlayer.setReleaseMode(ReleaseMode.loop);
+      // Odtwórz muzykę z folderu assets.
+      // Używamy teraz ścieżki do Twojego pliku.
+      await _audioPlayer.play(AssetSource('audio/spaceship-arcade-shooter-game-background-soundtrack-318508.mp3'));
+    } catch (e) {
+      // Obsłuż błąd, jeśli plik audio nie zostanie znaleziony lub wystąpi inny problem
+      print("Nie udało się odtworzyć muzyki: $e");
+    }
+  }
+
+  @override
+  void dispose() {
+    // 3. Zatrzymaj i zwolnij zasoby, gdy ekran jest zamykany
+    // To BARDZO WAŻNE, aby uniknąć wycieków pamięci i odtwarzania muzyki po wyjściu z gry.
+    _audioPlayer.stop();
+    _audioPlayer.dispose();
+    super.dispose();
+  }
+
+  // <<< KONIEC KODU DLA MUZYKI >>>
 
   @override
   Widget build(BuildContext context) {
@@ -53,16 +85,18 @@ class _JafaGamesScreenState extends State<JafaGamesScreen> {
             tooltip: 'Pokaż Ranking',
             color: Colors.white,
             onPressed: () {
-              // Pauzuj grę przed otwarciem rankingu
+              // Pauzuj grę i muzykę przed otwarciem rankingu
               _gameInstance.pauseEngine();
+              _audioPlayer.pause(); 
               Navigator.push(
                 context,
                 MaterialPageRoute(builder: (context) => const LeaderboardScreen()),
               ).then((_) {
-                 // Wznów grę po powrocie z rankingu, jeśli nadal trwa
-                 if (_gameInstance.state == GameState.playing && mounted) {
+                  // Wznów grę i muzykę po powrocie z rankingu
+                  if (_gameInstance.state == GameState.playing && mounted) {
                     _gameInstance.resumeEngine();
-                 }
+                    _audioPlayer.resume();
+                  }
               });
             },
           ),
@@ -75,8 +109,13 @@ class _JafaGamesScreenState extends State<JafaGamesScreen> {
         overlayBuilderMap: {
           // Klucz nakładki 'gameOver'
           'gameOver': (BuildContext context, MotorboatGame game) {
+            // Zatrzymaj muzykę w tle na ekranie Game Over
+            _audioPlayer.pause();
             // Zwracamy widget Fluttera dla ekranu Game Over
-            return GameOverOverlay(game: game);
+            return GameOverOverlay(game: game, onRestart: () {
+              // Po restarcie, wznów muzykę
+              _audioPlayer.resume();
+            });
           },
         },
         loadingBuilder: (context) => const Center(
@@ -91,8 +130,9 @@ class _JafaGamesScreenState extends State<JafaGamesScreen> {
 // Widget Nakładki Game Over
 class GameOverOverlay extends StatelessWidget {
   final MotorboatGame game; // Referencja do gry
+  final VoidCallback onRestart; // Callback do wznowienia muzyki
 
-  const GameOverOverlay({super.key, required this.game});
+  const GameOverOverlay({super.key, required this.game, required this.onRestart});
 
   @override
   Widget build(BuildContext context) {
@@ -145,28 +185,31 @@ class GameOverOverlay extends StatelessWidget {
                   textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                 ),
                 onPressed: () {
+                  // Najpierw wywołaj restart gry
                   game.checkAndRestartGameFromOverlay();
+                  // A potem callback, aby wznowić muzykę
+                  onRestart();
                 },
               ),
               const SizedBox(height: 12),
-               // Komunikat o limicie (nasłuchuje na notifier)
-               ValueListenableBuilder<String>(
-                 valueListenable: game.gameOverMessageNotifier, // Użycie publicznego notifiera
-                 builder: (context, message, child) {
-                   if (message.isNotEmpty) {
-                     return Padding(
-                       padding: const EdgeInsets.only(top: 12.0),
-                       child: Text(
-                         message,
-                         textAlign: TextAlign.center,
-                         style: TextStyle(color: Colors.orange[300], fontSize: 14),
-                       ),
-                     );
-                   } else {
-                     return const SizedBox.shrink();
-                   }
-                 }
-               ),
+                // Komunikat o limicie (nasłuchuje na notifier)
+                ValueListenableBuilder<String>(
+                  valueListenable: game.gameOverMessageNotifier, // Użycie publicznego notifiera
+                  builder: (context, message, child) {
+                    if (message.isNotEmpty) {
+                      return Padding(
+                        padding: const EdgeInsets.only(top: 12.0),
+                        child: Text(
+                          message,
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: Colors.orange[300], fontSize: 14),
+                        ),
+                      );
+                    } else {
+                      return const SizedBox.shrink();
+                    }
+                  }
+                ),
             ],
           ),
         ),

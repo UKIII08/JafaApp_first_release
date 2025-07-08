@@ -30,6 +30,7 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  audioplayers: ^6.0.0
 
 
   # The following adds the Cupertino Icons font to your application.
@@ -62,7 +63,7 @@ dependencies:
   image_picker: ^1.1.2
   firebase_storage: ^12.4.7
   simple_animations: ^5.0.2
-  
+  async: ^2.11.0
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -91,6 +92,8 @@ flutter:
     - assets/google_logo.png
     - assets/images/
     - .env
+    - assets/audio/
+    - assets/audio/spaceship-arcade-shooter-game-background-soundtrack-318508.mp3
 flutter_icons:
   android: true
   ios: true

@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
 import 'package:intl/date_symbol_data_local.dart';
+// Potrzebne do rozmycia tła
 
 class SmallGroupScreen extends StatefulWidget {
   final String groupId;
@@ -14,20 +15,22 @@ class SmallGroupScreen extends StatefulWidget {
 }
 
 class _SmallGroupScreenState extends State<SmallGroupScreen> {
-  // Kontrolery do edycji (dla lidera)
+  // Kontrolery, stan i logika (bez zmian)
   final _formKey = GlobalKey<FormState>();
   final _bookController = TextEditingController();
   final _chapterController = TextEditingController();
   final _verseController = TextEditingController();
-
-  // Zmienne stanu do zarządzania terminami
   int? _selectedDay;
   TimeOfDay? _selectedTime;
   DateTime? _temporaryDateTime;
-
   bool _isSaving = false;
-
   final List<String> _weekdays = ['Poniedziałek', 'Wtorek', 'Środa', 'Czwartek', 'Piątek', 'Sobota', 'Niedziela'];
+
+  // Definicja palety kolorów dla nowoczesnego wyglądu
+  static const Color primaryAccent = Color(0xFF00A9FF);
+  static const Color lightBlueBackground = Color(0xFFF0F8FF);
+  static const Color darkTextColor = Color(0xFF333333);
+  static const Color lightTextColor = Color(0xFF666666);
 
   @override
   void initState() {
@@ -43,7 +46,89 @@ class _SmallGroupScreenState extends State<SmallGroupScreen> {
     super.dispose();
   }
 
-  // --- Funkcje Lidera ---
+  // --- ZAKTUALIZOWANA FUNKCJA: Wyświetlanie okna z listą nieobecnych ---
+  void _showAttendanceDetailsDialog(List<String> absentMembers) {
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+          // ZMIANA: Tytuł jest teraz bardziej elastyczny, aby uniknąć overflow
+          title: const FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Row(
+              children: [
+                Icon(Icons.people_alt_outlined, color: primaryAccent),
+                SizedBox(width: 10),
+                Text("Obecność na najbliższym spotkaniu"),
+              ],
+            ),
+          ),
+          // ZMIANA: Wyświetlanie listy nieobecnych zamiast statystyk
+          content: SizedBox(
+            width: double.maxFinite,
+            child: absentMembers.isEmpty
+                ? const ListTile(
+                    leading: Icon(Icons.check_circle, color: Colors.green),
+                    title: Text("Wygląda na to, że wszyscy będą obecni!"),
+                  )
+                : Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text("Osoby, które zgłosiły nieobecność:", style: TextStyle(fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 8),
+                    Flexible(
+                      child: ListView.builder(
+                        shrinkWrap: true,
+                        itemCount: absentMembers.length,
+                        itemBuilder: (context, index) {
+                          return FutureBuilder<DocumentSnapshot>(
+                            future: FirebaseFirestore.instance.collection('users').doc(absentMembers[index]).get(),
+                            builder: (context, userSnapshot) {
+                              if (!userSnapshot.hasData) {
+                                return const ListTile(title: Text("Ładowanie..."));
+                              }
+                              final userData = userSnapshot.data?.data() as Map<String, dynamic>?;
+                              return ListTile(
+                                leading: const Icon(Icons.person_off_outlined, color: Colors.redAccent),
+                                title: Text(userData?['displayName'] ?? 'Brak nazwy'),
+                              );
+                            },
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text("Zamknij", style: TextStyle(color: primaryAccent)),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  // Cała reszta logiki (saveChanges, addAnnouncement, etc.) pozostaje bez zmian
+  Future<void> _markAbsence() async {
+    final userId = FirebaseAuth.instance.currentUser?.uid;
+    if (userId == null) return;
+    await FirebaseFirestore.instance.collection('smallGroups').doc(widget.groupId).update({
+      'absentNextMeeting': FieldValue.arrayUnion([userId])
+    });
+  }
+
+  Future<void> _cancelAbsence() async {
+    final userId = FirebaseAuth.instance.currentUser?.uid;
+    if (userId == null) return;
+    await FirebaseFirestore.instance.collection('smallGroups').doc(widget.groupId).update({
+      'absentNextMeeting': FieldValue.arrayRemove([userId])
+    });
+  }
 
   Future<void> _saveChanges(BuildContext context) async {
     if (!_formKey.currentState!.validate()) return;
@@ -78,10 +163,10 @@ class _SmallGroupScreenState extends State<SmallGroupScreen> {
         'content': content.trim(),
         'createdAt': FieldValue.serverTimestamp(),
         'authorId': user?.uid,
-        'authorName': user?.displayName ?? 'Lider grupy',
+        'authorName': user?.displayName ?? 'Prowadzący grupy',
       });
   }
-
+  
   void _showAddAnnouncementDialog() {
     final announcementController = TextEditingController();
     showDialog(
@@ -110,9 +195,7 @@ class _SmallGroupScreenState extends State<SmallGroupScreen> {
       },
     );
   }
-
-  // --- Pozostałe funkcje pomocnicze ---
-
+  
   DateTime _calculateNextMeetingDate(int weekDay, String time) {
     DateTime now = DateTime.now();
     final timeParts = time.split(':');
@@ -136,20 +219,25 @@ class _SmallGroupScreenState extends State<SmallGroupScreen> {
       final time = await showTimePicker(context: context, initialTime: _selectedTime ?? TimeOfDay.now());
       if (time != null) setState(() => _selectedTime = time);
   }
+  
 
   @override
   Widget build(BuildContext context) {
     final currentUserId = FirebaseAuth.instance.currentUser?.uid;
 
     return Scaffold(
+      backgroundColor: Colors.white,
       appBar: AppBar(
         title: const Text('Moja Mała Grupa'),
+        backgroundColor: Colors.white,
+        foregroundColor: darkTextColor,
+        elevation: 0,
       ),
       body: StreamBuilder<DocumentSnapshot>(
         stream: FirebaseFirestore.instance.collection('smallGroups').doc(widget.groupId).snapshots(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
-             return const Center(child: CircularProgressIndicator());
+             return const Center(child: CircularProgressIndicator(color: primaryAccent));
           }
           if (!snapshot.hasData || !snapshot.data!.exists) {
             return const Center(child: Padding(padding: EdgeInsets.all(16.0), child: Text('Nie jesteś przypisany/a do żadnej grupy.', textAlign: TextAlign.center)));
@@ -157,6 +245,7 @@ class _SmallGroupScreenState extends State<SmallGroupScreen> {
 
           final groupData = snapshot.data!.data() as Map<String, dynamic>;
           final bool isLeader = groupData['leaderId'] == currentUserId;
+          final List<String> absentMembers = List<String>.from(groupData['absentNextMeeting'] ?? []);
 
           if (isLeader) {
             _bookController.text = groupData['currentBook'] ?? '';
@@ -169,51 +258,53 @@ class _SmallGroupScreenState extends State<SmallGroupScreen> {
           }
 
           return SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 80),
+            padding: const EdgeInsets.fromLTRB(20, 10, 20, 80),
             child: Form(
               key: _formKey,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Center(child: Text(groupData['groupName'] ?? '', style: Theme.of(context).textTheme.headlineMedium)),
-                  const SizedBox(height: 24),
+                  Text(
+                    groupData['groupName'] ?? '',
+                    style: const TextStyle(
+                      fontSize: 32,
+                      fontWeight: FontWeight.bold,
+                      color: darkTextColor,
+                    ),
+                  ),
+                  const SizedBox(height: 30),
 
-                  _buildSectionHeader('Najbliższe spotkanie', Icons.calendar_today),
-                  _buildMeetingInfo(groupData),
+                  _buildSectionHeader('Najbliższe spotkanie', Icons.calendar_today_outlined),
+                  _buildMeetingInfo(groupData, absentMembers),
+                  const SizedBox(height: 12),
+                  _buildMyAttendanceSection(absentMembers),
+                  
                   if (isLeader) ...[
                     const SizedBox(height: 8),
                     _buildLeaderControlsForMeeting(),
                   ],
-                  const Divider(height: 32),
+                  _buildDivider(),
                   
-                  // ZMIANA: Przycisk dodawania jest teraz w nagłówku sekcji, widoczny tylko dla lidera
                   _buildSectionHeader(
                     'Ogłoszenia grupowe', 
                     Icons.campaign_outlined,
                     action: isLeader 
                       ? IconButton(
-                          icon: const Icon(Icons.add_comment_outlined),
+                          icon: const Icon(Icons.add_circle_outline, color: primaryAccent),
                           tooltip: 'Dodaj ogłoszenie grupowe',
                           onPressed: _showAddAnnouncementDialog,
                         )
                       : null,
                   ),
                   _buildAnnouncementsList(),
-                  const Divider(height: 32),
+                  _buildDivider(),
                   
-                  _buildSectionHeader('Materiał do studium', Icons.menu_book),
+                  _buildSectionHeader('Materiał do studium', Icons.menu_book_outlined),
                   if (!isLeader) _buildReadOnlyMaterialInfo(groupData),
-                  if (isLeader) ...[
-                    TextFormField(controller: _bookController, decoration: const InputDecoration(labelText: 'Księga / Temat')),
-                    Row(children: [
-                      Expanded(child: TextFormField(controller: _chapterController, decoration: const InputDecoration(labelText: 'Rozdział'), keyboardType: TextInputType.number)),
-                      const SizedBox(width: 16),
-                      Expanded(child: TextFormField(controller: _verseController, decoration: const InputDecoration(labelText: 'Werset'), keyboardType: TextInputType.number)),
-                    ]),
-                  ],
-                  const Divider(height: 32),
+                  if (isLeader) _buildLeaderMaterialControls(),
+                  _buildDivider(),
                   
-                  _buildSectionHeader('Członkowie', Icons.group),
+                  _buildSectionHeader('Członkowie', Icons.groups_outlined),
                   _buildMembersList(List<String>.from(groupData['members'] ?? []), groupData['leaderId']),
                 ],
               ),
@@ -232,6 +323,7 @@ class _SmallGroupScreenState extends State<SmallGroupScreen> {
               onPressed: _isSaving ? null : () => _saveChanges(context),
               label: Text(_isSaving ? 'Zapisywanie...' : 'Zapisz zmiany'),
               icon: _isSaving ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Icon(Icons.save),
+              backgroundColor: primaryAccent,
             );
           }
           return const SizedBox.shrink();
@@ -240,194 +332,92 @@ class _SmallGroupScreenState extends State<SmallGroupScreen> {
     );
   }
 
-  // --- WIDGETY POMOCNICZE ---
+  // --- WIDGETY ---
+
+  Widget _buildDivider() => const Padding(padding: EdgeInsets.symmetric(vertical: 20.0), child: Divider(color: Colors.black12, height: 1));
+
+  Widget _buildSectionHeader(String title, IconData icon, {Widget? action}) {
+    return Padding(padding: const EdgeInsets.only(bottom: 12.0), child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Row(children: [Icon(icon, color: darkTextColor, size: 22), const SizedBox(width: 10), Text(title, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: darkTextColor))]), if (action != null) action]));
+  }
+  
+  // ZMIANA: Usunięto `allMembers` z parametrów, bo nie jest już potrzebne
+  Widget _buildMeetingInfo(Map<String, dynamic> data, List<String> absentMembers) {
+    final temporaryMeeting = (data['temporaryMeetingDateTime'] as Timestamp?)?.toDate();
+    final isTemporary = temporaryMeeting != null;
+    final DateTime meetingDate = isTemporary ? temporaryMeeting : _calculateNextMeetingDate(data['recurringMeetingDay'] ?? 2, data['recurringMeetingTime'] ?? '18:00');
+
+    return InkWell(
+      onTap: () => _showAttendanceDetailsDialog(absentMembers),
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(color: lightBlueBackground, borderRadius: BorderRadius.circular(12), border: Border.all(color: isTemporary ? Colors.orange.withOpacity(0.5) : Colors.transparent, width: 1.5)),
+        child: Row(children: [
+          Icon(Icons.access_time_filled, color: isTemporary ? Colors.orange : primaryAccent, size: 30),
+          const SizedBox(width: 16),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(DateFormat('EEEE, d MMMM', 'pl_PL').format(meetingDate), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: darkTextColor)),
+            Text('godzina ${DateFormat('HH:mm').format(meetingDate)}', style: const TextStyle(fontSize: 16, color: lightTextColor)),
+          ])),
+          const Icon(Icons.arrow_forward_ios, size: 16, color: lightTextColor),
+        ]),
+      ),
+    );
+  }
+
+  Widget _buildMyAttendanceSection(List<dynamic> absentList) {
+    final userId = FirebaseAuth.instance.currentUser?.uid;
+    if (userId == null) return const SizedBox.shrink();
+    final bool isAbsent = absentList.contains(userId);
+    if (!isAbsent) {
+      return Center(child: TextButton.icon(icon: const Icon(Icons.sentiment_very_dissatisfied, size: 20), label: const Text('Nie będzie mnie na spotkaniu'), onPressed: _markAbsence, style: TextButton.styleFrom(foregroundColor: Colors.red.shade600, padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8))));
+    } else {
+      return Center(child: Container(padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 6.0), decoration: BoxDecoration(color: Colors.red.withOpacity(0.05), borderRadius: BorderRadius.circular(20)), child: Row(mainAxisSize: MainAxisSize.min, children: [const Icon(Icons.check_circle_outline, color: Colors.red, size: 20), const SizedBox(width: 8), const Text('Zgłoszono nieobecność', style: TextStyle(fontWeight: FontWeight.bold, color: darkTextColor)), const SizedBox(width: 4), TextButton(onPressed: _cancelAbsence, child: const Text('Anuluj', style: TextStyle(color: primaryAccent)))])));
+    }
+  }
 
   Widget _buildAnnouncementsList() {
     return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection('smallGroups')
-          .doc(widget.groupId)
-          .collection('announcements')
-          .orderBy('createdAt', descending: true)
-          .limit(10)
-          .snapshots(),
+      stream: FirebaseFirestore.instance.collection('smallGroups').doc(widget.groupId).collection('announcements').orderBy('createdAt', descending: true).limit(5).snapshots(),
       builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-          return const Center(child: Padding(
-            padding: EdgeInsets.symmetric(vertical: 8.0),
-            child: Text('Brak ogłoszeń grupowych.', style: TextStyle(color: Colors.grey)),
-          ));
-        }
-
-        return ListView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          itemCount: snapshot.data!.docs.length,
-          itemBuilder: (context, index) {
-            final doc = snapshot.data!.docs[index];
-            final data = doc.data() as Map<String, dynamic>;
-            final date = (data['createdAt'] as Timestamp?)?.toDate();
-
-            return Card(
-              elevation: 1,
-              margin: const EdgeInsets.symmetric(vertical: 4),
-              child: Padding(
-                padding: const EdgeInsets.all(12.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(data['content'] ?? ''),
-                    const SizedBox(height: 8),
-                    Align(
-                      alignment: Alignment.bottomRight,
-                      child: Text(
-                        date != null ? DateFormat('d MMM yy, HH:mm', 'pl_PL').format(date) : '',
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey.shade600),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            );
-          },
-        );
+        if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator(color: primaryAccent));
+        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) return const Center(child: Padding(padding: EdgeInsets.symmetric(vertical: 8.0), child: Text('Brak ogłoszeń grupowych.', style: TextStyle(color: Colors.grey))));
+        return ListView.separated(shrinkWrap: true, physics: const NeverScrollableScrollPhysics(), itemCount: snapshot.data!.docs.length, separatorBuilder: (context, index) => const SizedBox(height: 10), itemBuilder: (context, index) {
+          final doc = snapshot.data!.docs[index];
+          final data = doc.data() as Map<String, dynamic>;
+          final date = (data['createdAt'] as Timestamp?)?.toDate();
+          return Container(padding: const EdgeInsets.all(16), decoration: BoxDecoration(color: Colors.grey.shade50, borderRadius: BorderRadius.circular(12)), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(data['content'] ?? '', style: const TextStyle(fontSize: 15, color: darkTextColor, height: 1.4)), const SizedBox(height: 10), Align(alignment: Alignment.bottomRight, child: Text(date != null ? 'Dodano ${DateFormat('d MMM, HH:mm', 'pl_PL').format(date)}' : '', style: const TextStyle(color: lightTextColor, fontSize: 12)))]));
+        });
       },
     );
   }
 
-  // ZMIANA: Nagłówek sekcji akceptuje teraz opcjonalny przycisk "action"
-  Widget _buildSectionHeader(String title, IconData icon, {Widget? action}) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8.0, top: 8.0),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Row(
-            children: [
-              Icon(icon, color: Theme.of(context).primaryColor),
-              const SizedBox(width: 8),
-              Text(title, style: Theme.of(context).textTheme.titleLarge),
-            ],
-          ),
-          if (action != null) action, // Dodaj przycisk, jeśli został przekazany
-        ],
-      ),
-    );
-  }
-
-  Widget _buildMeetingInfo(Map<String, dynamic> data) {
-    final temporaryMeeting = (data['temporaryMeetingDateTime'] as Timestamp?)?.toDate();
-    final isTemporary = temporaryMeeting != null;
-    
-    final DateTime meetingDate = isTemporary 
-      ? temporaryMeeting
-      : _calculateNextMeetingDate(data['recurringMeetingDay'] ?? 2, data['recurringMeetingTime'] ?? '18:00');
-
-    return Card(
-      elevation: 2,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: isTemporary ? Colors.red : Colors.transparent, width: 1.5),
-      ),
-      child: ListTile(
-        contentPadding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
-        title: Text(
-          DateFormat('EEEE, d MMMM, HH:mm', 'pl_PL').format(meetingDate),
-          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: isTemporary ? Colors.red.shade700 : null),
-        ),
-        subtitle: Text(isTemporary ? 'Termin jednorazowy (zastępuje regularny)' : 'Regularne spotkanie'),
-      ),
-    );
-  }
-  
-  Widget _buildReadOnlyMaterialInfo(Map<String, dynamic> data) {
-    return Card(
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: ListTile(
-        title: Text(
-          '${data['currentBook'] ?? 'Brak'} ${data['currentChapter'] ?? ''}:${data['currentVerse'] ?? ''}',
-          style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-        ),
-      ),
-    );
-  }
-
   Widget _buildLeaderControlsForMeeting() {
-    return Card(
-      elevation: 0,
-      color: Colors.blue.withOpacity(0.05),
-      child: Padding(
-        padding: const EdgeInsets.all(12.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text("Edytuj regularny termin:", style: Theme.of(context).textTheme.titleSmall),
-            Row(children: [
-              Expanded(
-                flex: 3,
-                child: DropdownButton<int>(
-                  isExpanded: true,
-                  value: _selectedDay,
-                  items: _weekdays.asMap().entries.map((e) => DropdownMenuItem(value: e.key + 1, child: Text(e.value))).toList(),
-                  onChanged: (val) => setState(() => _selectedDay = val),
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                flex: 2,
-                child: ActionChip(
-                  avatar: const Icon(Icons.edit_outlined, size: 16),
-                  label: Text(_selectedTime?.format(context) ?? 'Ustaw'),
-                  onPressed: _pickRecurringTime,
-                ),
-              ),
-            ]),
-            const Divider(),
-            Text("Ustaw termin jednorazowy:", style: Theme.of(context).textTheme.titleSmall),
-            Row(children: [
-              ActionChip(
-                avatar: Icon(Icons.add, size: 16, color: Colors.red.shade700),
-                label: Text(_temporaryDateTime == null ? 'Ustaw...' : DateFormat('d MMM, HH:mm').format(_temporaryDateTime!)),
-                onPressed: _pickTemporaryDate,
-                backgroundColor: Colors.red.withOpacity(0.1),
-              ),
-              if (_temporaryDateTime != null)
-                IconButton(icon: Icon(Icons.clear, color: Colors.red.shade700), tooltip: "Anuluj termin jednorazowy", onPressed: () => setState(() => _temporaryDateTime = null)),
-            ]),
-          ],
-        ),
-      ),
-    );
+    return Container(padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: Colors.grey.shade50, borderRadius: BorderRadius.circular(12)), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const Text("Panel Prowadzącego: Termin spotkania", style: TextStyle(fontWeight: FontWeight.bold, color: darkTextColor)), const SizedBox(height: 8), const Text("Regularny termin:", style: TextStyle(color: lightTextColor)), Row(children: [Expanded(child: DropdownButton<int>(isExpanded: true, value: _selectedDay, items: _weekdays.asMap().entries.map((e) => DropdownMenuItem(value: e.key + 1, child: Text(e.value))).toList(), onChanged: (val) => setState(() => _selectedDay = val))), const SizedBox(width: 16), ElevatedButton(onPressed: _pickRecurringTime, child: Text(_selectedTime?.format(context) ?? 'Ustaw'))]), const Divider(height: 16), const Text("Jednorazowa zmiana:", style: TextStyle(color: lightTextColor)), const SizedBox(height: 4), Row(children: [ElevatedButton(onPressed: _pickTemporaryDate, child: Text(_temporaryDateTime == null ? 'Ustaw...' : DateFormat('d MMM, HH:mm').format(_temporaryDateTime!))), if (_temporaryDateTime != null) IconButton(icon: const Icon(Icons.clear, color: Colors.red), onPressed: () => setState(() => _temporaryDateTime = null))])]));
   }
-  
+
+  Widget _buildLeaderMaterialControls() {
+    return Column(children: [TextFormField(controller: _bookController, decoration: const InputDecoration(labelText: 'Księga / Temat', border: OutlineInputBorder(), isDense: true)), const SizedBox(height: 10), Row(children: [Expanded(child: TextFormField(controller: _chapterController, decoration: const InputDecoration(labelText: 'Rozdział', border: OutlineInputBorder(), isDense: true), keyboardType: TextInputType.number)), const SizedBox(width: 10), Expanded(child: TextFormField(controller: _verseController, decoration: const InputDecoration(labelText: 'Werset', border: OutlineInputBorder(), isDense: true), keyboardType: TextInputType.number))])]);
+  }
+
+  Widget _buildReadOnlyMaterialInfo(Map<String, dynamic> data) {
+    return Container(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20), decoration: BoxDecoration(color: lightBlueBackground, borderRadius: BorderRadius.circular(12)), child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [Text('${data['currentBook'] ?? 'Brak'}', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: darkTextColor)), Text(' ${data['currentChapter'] ?? ''}:${data['currentVerse'] ?? ''}', style: const TextStyle(fontSize: 20, color: primaryAccent, fontWeight: FontWeight.bold))]));
+  }
+
   Widget _buildMembersList(List<String> memberIds, String leaderId) {
-     return ListView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
+    return ListView.builder(
+      shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
       itemCount: memberIds.length,
       itemBuilder: (context, index) {
         final memberId = memberIds[index];
         return FutureBuilder<DocumentSnapshot>(
           future: FirebaseFirestore.instance.collection('users').doc(memberId).get(),
           builder: (context, userSnapshot) {
-            if (!userSnapshot.hasData) return const LinearProgressIndicator();
+            if (!userSnapshot.hasData) return const SizedBox.shrink(); 
             final userData = userSnapshot.data!.data() as Map<String, dynamic>;
             final bool isLeader = memberId == leaderId;
-            return Card(
-              elevation: 1,
-              child: ListTile(
-                leading: CircleAvatar(
-                  backgroundColor: isLeader ? Theme.of(context).primaryColorLight : Colors.grey.shade300,
-                  child: Text((userData['displayName'] ?? 'U')[0].toUpperCase()),
-                ),
-                title: Text(userData['displayName'] ?? 'Użytkownik bez nazwy', style: TextStyle(fontWeight: isLeader ? FontWeight.bold : FontWeight.normal)),
-                trailing: isLeader ? const Chip(label: Text('Prowadzący'), padding: EdgeInsets.symmetric(horizontal: 4, vertical: 0)) : null,
-              ),
-            );
+            final photoUrl = userData['photoURL'] as String?;
+            return Container(margin: const EdgeInsets.symmetric(vertical: 4), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(10), boxShadow: [BoxShadow(color: Colors.grey.withOpacity(0.08), blurRadius: 10, offset: const Offset(0, 4))]), child: ListTile(leading: CircleAvatar(backgroundColor: lightBlueBackground, backgroundImage: photoUrl != null ? NetworkImage(photoUrl) : null, child: photoUrl == null ? Text((userData['displayName'] ?? 'U')[0].toUpperCase(), style: const TextStyle(fontWeight: FontWeight.bold, color: primaryAccent)) : null), title: Text(userData['displayName'] ?? 'Użytkownik bez nazwy', style: TextStyle(fontWeight: isLeader ? FontWeight.bold : FontWeight.normal, color: darkTextColor)), trailing: isLeader ? Chip(label: const Text('Prowadzący'), backgroundColor: primaryAccent, labelStyle: const TextStyle(color: Colors.white), padding: const EdgeInsets.symmetric(horizontal: 8)) : null));
           },
         );
       },
