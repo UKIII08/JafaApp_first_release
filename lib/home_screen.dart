@@ -50,12 +50,21 @@ class _HomeScreenState extends State<HomeScreen> {
     FirebaseMessaging.onMessage.listen((RemoteMessage message) { print('[FCM] Got a message whilst in the foreground!'); print('[FCM] Message data: ${message.data}'); if (message.notification != null) { print('[FCM] Message also contained a notification: ${message.notification?.title}'); if (mounted) { showDialog( context: context, builder: (context) => AlertDialog( title: Text(message.notification?.title ?? 'Nowe powiadomienie'), content: Text(message.notification?.body ?? ''), actions: [ TextButton( onPressed: () => Navigator.of(context).pop(), child: const Text('OK'), ), ], ), ); } } });
     RemoteMessage? initialMessage = await messaging.getInitialMessage(); if (initialMessage != null) { print('[FCM] App opened from terminated state by notification: ${initialMessage.messageId}'); _handleMessageTap(initialMessage); } FirebaseMessaging.onMessageOpenedApp.listen(_handleMessageTap);
   }
- 
+  
   Future<void> _saveTokenToDatabase(String? token) async { if (token == null) return; final userId = FirebaseAuth.instance.currentUser?.uid; if (userId == null) return; print("[FCM] Saving token for user $userId"); try { await FirebaseFirestore.instance.collection('users').doc(userId).set({ 'fcmTokens': FieldValue.arrayUnion([token]), }, SetOptions(merge: true)); print("[FCM] Token saved successfully."); } catch (e) { print("[FCM] Error saving token: $e"); } }
- 
+  
   void _handleMessageTap(RemoteMessage message) { print('[FCM] Notification tapped! Message ID: ${message.messageId}'); print('[FCM] Message data: ${message.data}'); /* TODO: Implement navigation based on message data */ }
 
   Future<void> _handleRefresh() async { await Future.delayed(const Duration(seconds: 1)); if (mounted) { setState(() { }); } }
+  
+  // ✅ NOWA FUNKCJA URODZINOWA
+  bool _isTodayBirthday(Timestamp? birthDate) {
+    if (birthDate == null) return false;
+    final now = DateTime.now();
+    final date = birthDate.toDate();
+    // Porównujemy tylko miesiąc i dzień
+    return date.month == now.month && date.day == now.day;
+  }
 
   // <<< NOWA FUNKCJA DO ZNAJDOWANIA I NAWIGOWANIA DO GRUPY >>>
   Future<void> _navigateToMyGroup() async {
@@ -170,17 +179,60 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  // ✅ NOWY WIDŻET KARTKI URODZINOWEJ
+  Widget _buildBirthdayCard(String name) {
+    return Card(
+      elevation: 4,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+      margin: const EdgeInsets.only(bottom: 24.0),
+      clipBehavior: Clip.antiAlias,
+      child: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [Colors.deepPurple.shade300, Colors.blue.shade400],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(20.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Icon(Icons.cake_outlined, color: Colors.white, size: 40),
+              const SizedBox(height: 16),
+              Text(
+                'Wszystkiego najlepszego, $name!',
+                style: const TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                  shadows: [Shadow(blurRadius: 10.0, color: Colors.black26, offset: Offset(2.0, 2.0))],
+                ),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Życzymy Ci wspaniałego dnia, pełnego radości i Bożego błogosławieństwa!',
+                style: TextStyle(fontSize: 16, color: Colors.white70),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final user = _auth.currentUser;
-    String welcomeName = "Użytkowniku";
+    String initialWelcomeName = "Użytkowniku"; // Nazwa domyślna, zanim załadują się dane
     if (user != null) {
         final displayName = user.displayName?.trim();
         if (displayName != null && displayName.isNotEmpty) {
           final nameParts = displayName.split(' ');
-          welcomeName = nameParts.first.isNotEmpty ? nameParts.first : displayName;
+          initialWelcomeName = nameParts.first.isNotEmpty ? nameParts.first : displayName;
         } else if (user.email != null && user.email!.isNotEmpty) {
-          welcomeName = user.email!;
+          initialWelcomeName = user.email!;
         }
     }
 
@@ -208,231 +260,182 @@ class _HomeScreenState extends State<HomeScreen> {
                 child: Stack(
                   children: <Widget>[
                     Align( alignment: Alignment.topCenter, child: Padding( padding: const EdgeInsets.only(top: 16.0), child: buildLogo(100), ), ),
-                    Positioned( bottom: 12.0, left: 16.0, child: Text( "Witaj, $welcomeName", style: const TextStyle( color: Colors.black87, fontSize: 18, fontWeight: FontWeight.w500, shadows: [ Shadow( blurRadius: 1.0, color: Colors.black12, offset: Offset(0.5, 0.5), ), ], ), ), ),
+                    Positioned( bottom: 12.0, left: 16.0, child: Text( "Witaj, $initialWelcomeName", style: const TextStyle( color: Colors.black87, fontSize: 18, fontWeight: FontWeight.w500, shadows: [ Shadow( blurRadius: 1.0, color: Colors.black12, offset: Offset(0.5, 0.5), ), ], ), ), ),
                   ],
                 ),
               ),
             ),
-           
-            // --- NOWA KOLEJNOŚĆ W MENU ---
-            ListTile(
-              leading: const Icon(Icons.groups_outlined),
-              title: const Text("Mała Grupa"),
-              onTap: () {
-                Navigator.pop(context); // Zamknij drawer przed nawigacją
-                // <<< ZMIANA: WYWOŁANIE NOWEJ FUNKCJI >>>
-                _navigateToMyGroup();
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.volunteer_activism_outlined),
-              title: const Text("Służba"),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.push(context, MaterialPageRoute(builder: (context) => const SluzbaScreen()));
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.photo_library_outlined),
-              title: const Text("Multimedia"),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.push(context, MaterialPageRoute(builder: (context) => const MultimediaScreen()));
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.event_available_outlined),
-              title: const Text("Wydarzenia"),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.push(context, MaterialPageRoute(builder: (context) => const MainWydarzeniaNavigatorScreen()));
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.local_library_outlined),
-              title: const Text("Biblioteka"),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.push(context, MaterialPageRoute(builder: (context) => const LibraryScreen()));
-              },
-            ),
-              ListTile(
-              leading: const Icon(Icons.sports_esports_outlined),
-              title: const Text("Jafa Games"),
-              onTap: () async {
-                Navigator.pop(context);
-                showDialog(
-                  context: context,
-                  barrierDismissible: false,
-                  builder: (BuildContext context) => const Center(child: CircularProgressIndicator()),
-                );
-                bool canPlay = await _checkGameAttempts();
-                if (mounted) Navigator.pop(context);
-                if (canPlay && mounted) {
-                  Navigator.push(context, MaterialPageRoute(builder: (context) => const JafaGamesScreen()));
-                } else if (!canPlay && mounted) {
-                  _showLimitReachedDialog(context);
-                }
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.favorite_border_outlined),
-              title: const Text("Wsparcie"),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.push(context, MaterialPageRoute(builder: (context) => const WsparcieScreen()));
-              },
-            ),
-            // Pozycje na końcu menu
-            ListTile(
-              leading: const Icon(Icons.person_outline),
-              title: const Text('Moje konto'),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.push(context, MaterialPageRoute(builder: (context) => const ProfileScreen()));
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.info_outline),
-              title: const Text("Informacje"),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.push(context, MaterialPageRoute(builder: (context) => const InformacjeScreen()));
-              },
-            ),
+            
+            // --- Menu bez zmian ---
+            ListTile( leading: const Icon(Icons.groups_outlined), title: const Text("Mała Grupa"), onTap: () { Navigator.pop(context); _navigateToMyGroup(); }, ),
+            ListTile( leading: const Icon(Icons.volunteer_activism_outlined), title: const Text("Służba"), onTap: () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (context) => const SluzbaScreen())); }, ),
+            ListTile( leading: const Icon(Icons.photo_library_outlined), title: const Text("Multimedia"), onTap: () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (context) => const MultimediaScreen())); }, ),
+            ListTile( leading: const Icon(Icons.event_available_outlined), title: const Text("Wydarzenia"), onTap: () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (context) => const MainWydarzeniaNavigatorScreen())); }, ),
+            ListTile( leading: const Icon(Icons.local_library_outlined), title: const Text("Biblioteka"), onTap: () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (context) => const LibraryScreen())); }, ),
+            ListTile( leading: const Icon(Icons.sports_esports_outlined), title: const Text("Jafa Games"), onTap: () async { Navigator.pop(context); showDialog( context: context, barrierDismissible: false, builder: (BuildContext context) => const Center(child: CircularProgressIndicator()), ); bool canPlay = await _checkGameAttempts(); if (mounted) Navigator.pop(context); if (canPlay && mounted) { Navigator.push(context, MaterialPageRoute(builder: (context) => const JafaGamesScreen())); } else if (!canPlay && mounted) { _showLimitReachedDialog(context); } }, ),
+            ListTile( leading: const Icon(Icons.favorite_border_outlined), title: const Text("Wsparcie"), onTap: () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (context) => const WsparcieScreen())); }, ),
+            ListTile( leading: const Icon(Icons.person_outline), title: const Text('Moje konto'), onTap: () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (context) => const ProfileScreen())); }, ),
+            ListTile( leading: const Icon(Icons.info_outline), title: const Text("Informacje"), onTap: () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (context) => const InformacjeScreen())); }, ),
             const Divider(),
-            ListTile(
-              leading: const Icon(Icons.logout),
-              title: const Text("Wyloguj"),
-              onTap: () async {
-                Navigator.pop(context);
-                await _auth.signOut();
-              },
-            ),
+            ListTile( leading: const Icon(Icons.logout), title: const Text("Wyloguj"), onTap: () async { Navigator.pop(context); await _auth.signOut(); }, ),
           ],
         ),
       ),
-      body: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding( padding: const EdgeInsets.symmetric(vertical: 16.0), child: Text("Witaj, $welcomeName 👋", style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold)), ),
-            Padding( padding: const EdgeInsets.only(bottom: 10.0), child: Text("Aktualności", style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w600)), ),
-            Expanded(
-              child: RefreshIndicator(
-                onRefresh: _handleRefresh,
-                color: Theme.of(context).primaryColor,
-                child: StreamBuilder<QuerySnapshot>(
-                  stream: _firestore
-                      .collection('aktualnosci')
-                      .orderBy('publishDate', descending: true)
-                      .snapshots(),
-                  builder: (context, snapshot) {
-                    if (snapshot.connectionState == ConnectionState.waiting) {
-                      return ListView.builder(
-                        itemCount: 3,
-                        itemBuilder: (context, index) => _buildNewsItemShimmer(context),
-                      );
-                    }
-                    if (snapshot.hasError) {
-                      print("Błąd StreamBuilder (Aktualności): ${snapshot.error}");
-                      return Center(child: Text('Błąd ładowania aktualności: ${snapshot.error}'));
-                    }
-                    final docs = snapshot.data?.docs;
-                    if (docs == null || docs.isEmpty) {
-                      return const Center(child: Text('Brak aktualności.'));
-                    }
-                    return ListView.builder(
-                      padding: const EdgeInsets.only(bottom: 16.0, top: 4.0),
-                      itemCount: docs.length,
-                      itemBuilder: (context, index) {
-                        final data = docs[index].data() as Map<String, dynamic>?;
-                        if (data == null) return const SizedBox.shrink();
+      // ✅ GŁÓWNA ZMIANA - OPAKOWANIE TREŚCI W STREAMBUILDER DLA DANYCH UŻYTKOWNIKA
+      body: StreamBuilder<DocumentSnapshot>(
+        stream: user != null ? _firestore.collection('users').doc(user.uid).snapshots() : null,
+        builder: (context, userSnapshot) {
+          
+          if (user == null) {
+            // Obsługa dla niezalogowanego użytkownika - można zostawić tylko aktualności
+            return const Center(child: Text("Zaloguj się, aby zobaczyć więcej."));
+          }
+          
+          if (userSnapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (userSnapshot.hasError) {
+            return const Center(child: Text("Błąd ładowania danych użytkownika."));
+          }
+          if (!userSnapshot.hasData || !userSnapshot.data!.exists) {
+            return const Center(child: Text("Nie znaleziono danych użytkownika."));
+          }
 
-                        final title = data['title'] as String? ?? "Bez tytułu";
-                        final content = data['content'] as String? ?? "Brak treści";
-                        final timestamp = data['publishDate'] as Timestamp?;
-                        final imageUrl = data['imageUrl'] as String?;
-                        final gradientPair = gradientPairs[index % gradientPairs.length];
-                        final String formattedDateForList = timestamp != null
-                            ? DateFormat('dd.MM.yyyy HH:mm', 'pl_PL').format(timestamp.toDate())
-                            : 'Brak daty';
+          final userData = userSnapshot.data!.data() as Map<String, dynamic>;
+          final String welcomeName = userData['firstName'] ?? initialWelcomeName;
+          final Timestamp? birthDate = userData['birthDate'] as Timestamp?;
+          final bool showBirthdayCard = _isTodayBirthday(birthDate);
 
-                        return Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 8.0),
-                          child: GlowingCardWrapper(
-                            borderRadius: BorderRadius.circular(15.0),
-                            child: InkWell(
-                              onTap: () {
-                                Navigator.push( context, MaterialPageRoute( builder: (context) => NewsDetailScreen( title: title, content: content, timestamp: timestamp, imageUrl: imageUrl, ), ), );
-                              },
-                              borderRadius: BorderRadius.circular(15.0),
-                              child: Container(
-                                padding: const EdgeInsets.all(16.0),
-                                decoration: BoxDecoration(
-                                  gradient: LinearGradient(
-                                    colors: gradientPair,
-                                    begin: Alignment.topLeft,
-                                    end: Alignment.bottomRight,
-                                  ),
+          return Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Powitanie
+                Padding( padding: const EdgeInsets.symmetric(vertical: 16.0), child: Text("Witaj, $welcomeName 👋", style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold)), ),
+
+                // ✅ KARTA URODZINOWA - WYŚWIETLANA WARUNKOWO
+                if(showBirthdayCard)
+                  _buildBirthdayCard(welcomeName),
+
+                // Reszta UI
+                Padding( padding: const EdgeInsets.only(bottom: 10.0), child: Text("Aktualności", style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w600)), ),
+                Expanded(
+                  child: RefreshIndicator(
+                    onRefresh: _handleRefresh,
+                    color: Theme.of(context).primaryColor,
+                    child: StreamBuilder<QuerySnapshot>(
+                      stream: _firestore
+                          .collection('aktualnosci')
+                          .orderBy('publishDate', descending: true)
+                          .snapshots(),
+                      builder: (context, snapshot) {
+                        if (snapshot.connectionState == ConnectionState.waiting) {
+                          return ListView.builder(
+                            itemCount: 3,
+                            itemBuilder: (context, index) => _buildNewsItemShimmer(context),
+                          );
+                        }
+                        if (snapshot.hasError) {
+                          print("Błąd StreamBuilder (Aktualności): ${snapshot.error}");
+                          return Center(child: Text('Błąd ładowania aktualności: ${snapshot.error}'));
+                        }
+                        final docs = snapshot.data?.docs;
+                        if (docs == null || docs.isEmpty) {
+                          return const Center(child: Text('Brak aktualności.'));
+                        }
+                        return ListView.builder(
+                          padding: const EdgeInsets.only(bottom: 16.0, top: 4.0),
+                          itemCount: docs.length,
+                          itemBuilder: (context, index) {
+                            final data = docs[index].data() as Map<String, dynamic>?;
+                            if (data == null) return const SizedBox.shrink();
+
+                            final title = data['title'] as String? ?? "Bez tytułu";
+                            final content = data['content'] as String? ?? "Brak treści";
+                            final timestamp = data['publishDate'] as Timestamp?;
+                            final imageUrl = data['imageUrl'] as String?;
+                            final gradientPair = gradientPairs[index % gradientPairs.length];
+                            final String formattedDateForList = timestamp != null
+                                ? DateFormat('dd.MM.yyyy HH:mm', 'pl_PL').format(timestamp.toDate())
+                                : 'Brak daty';
+
+                            return Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 8.0),
+                              child: GlowingCardWrapper(
+                                borderRadius: BorderRadius.circular(15.0),
+                                child: InkWell(
+                                  onTap: () {
+                                    Navigator.push( context, MaterialPageRoute( builder: (context) => NewsDetailScreen( title: title, content: content, timestamp: timestamp, imageUrl: imageUrl, ), ), );
+                                  },
                                   borderRadius: BorderRadius.circular(15.0),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: Colors.black.withOpacity(0.1),
-                                      spreadRadius: 1,
-                                      blurRadius: 4,
-                                      offset: const Offset(0, 2),
-                                    ),
-                                  ],
-                                ),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    if (imageUrl != null && Uri.tryParse(imageUrl)?.isAbsolute == true)
-                                      Padding(
-                                        padding: const EdgeInsets.only(bottom: 12.0),
-                                        child: ClipRRect(
-                                          borderRadius: BorderRadius.circular(10.0),
-                                          child: Image.network(
-                                            imageUrl,
-                                            height: 150,
-                                            width: double.infinity,
-                                            fit: BoxFit.cover,
-                                            loadingBuilder: (context, child, loadingProgress) {
-                                              if (loadingProgress == null) return child;
-                                              return Container(
-                                                height: 150,
-                                                decoration: BoxDecoration( color: Colors.white.withOpacity(0.2), borderRadius: BorderRadius.circular(10.0), ),
-                                                child: Center(child: CircularProgressIndicator( value: loadingProgress.expectedTotalBytes != null ? loadingProgress.cumulativeBytesLoaded / loadingProgress.expectedTotalBytes! : null, color: Colors.white70, strokeWidth: 2, )),
-                                              );
-                                            },
-                                            errorBuilder: (context, error, stackTrace) {
-                                              print("Błąd ładowania obrazka na liście: $error");
-                                              return Container( height: 150, decoration: BoxDecoration( color: Colors.white.withOpacity(0.2), borderRadius: BorderRadius.circular(10.0), ), child: const Center(child: Icon(Icons.broken_image, color: Colors.white70, size: 40)), );
-                                            },
-                                          ),
-                                        ),
+                                  child: Container(
+                                    padding: const EdgeInsets.all(16.0),
+                                    decoration: BoxDecoration(
+                                      gradient: LinearGradient(
+                                        colors: gradientPair,
+                                        begin: Alignment.topLeft,
+                                        end: Alignment.bottomRight,
                                       ),
-                                    Text( title, style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold, color: Colors.white), ),
-                                    const SizedBox(height: 8),
-                                    Text( content, style: Theme.of(context).textTheme.bodyMedium?.copyWith(height: 1.4, color: Colors.white.withOpacity(0.9)), maxLines: 4, overflow: TextOverflow.ellipsis, ),
-                                    const SizedBox(height: 12),
-                                    Align( alignment: Alignment.centerRight, child: Text( 'Opublikowano: $formattedDateForList', style: Theme.of(context).textTheme.bodySmall?.copyWith( color: Colors.white.withOpacity(0.7), fontStyle: FontStyle.italic), ), ),
-                                  ],
+                                      borderRadius: BorderRadius.circular(15.0),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: Colors.black.withOpacity(0.1),
+                                          spreadRadius: 1,
+                                          blurRadius: 4,
+                                          offset: const Offset(0, 2),
+                                        ),
+                                      ],
+                                    ),
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        if (imageUrl != null && Uri.tryParse(imageUrl)?.isAbsolute == true)
+                                          Padding(
+                                            padding: const EdgeInsets.only(bottom: 12.0),
+                                            child: ClipRRect(
+                                              borderRadius: BorderRadius.circular(10.0),
+                                              child: Image.network(
+                                                imageUrl,
+                                                height: 150,
+                                                width: double.infinity,
+                                                fit: BoxFit.cover,
+                                                loadingBuilder: (context, child, loadingProgress) {
+                                                  if (loadingProgress == null) return child;
+                                                  return Container(
+                                                    height: 150,
+                                                    decoration: BoxDecoration( color: Colors.white.withOpacity(0.2), borderRadius: BorderRadius.circular(10.0), ),
+                                                    child: Center(child: CircularProgressIndicator( value: loadingProgress.expectedTotalBytes != null ? loadingProgress.cumulativeBytesLoaded / loadingProgress.expectedTotalBytes! : null, color: Colors.white70, strokeWidth: 2, )),
+                                                  );
+                                                },
+                                                errorBuilder: (context, error, stackTrace) {
+                                                  print("Błąd ładowania obrazka na liście: $error");
+                                                  return Container( height: 150, decoration: BoxDecoration( color: Colors.white.withOpacity(0.2), borderRadius: BorderRadius.circular(10.0), ), child: const Center(child: Icon(Icons.broken_image, color: Colors.white70, size: 40)), );
+                                                },
+                                              ),
+                                            ),
+                                          ),
+                                        Text( title, style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold, color: Colors.white), ),
+                                        const SizedBox(height: 8),
+                                        Text( content, style: Theme.of(context).textTheme.bodyMedium?.copyWith(height: 1.4, color: Colors.white.withOpacity(0.9)), maxLines: 4, overflow: TextOverflow.ellipsis, ),
+                                        const SizedBox(height: 12),
+                                        Align( alignment: Alignment.centerRight, child: Text( 'Opublikowano: $formattedDateForList', style: Theme.of(context).textTheme.bodySmall?.copyWith( color: Colors.white.withOpacity(0.7), fontStyle: FontStyle.italic), ), ),
+                                      ],
+                                    ),
+                                  ),
                                 ),
                               ),
-                            ),
-                          ),
+                            );
+                          },
                         );
                       },
-                    );
-                  },
+                    ),
+                  ),
                 ),
-              ),
+              ],
             ),
-          ],
-        ),
+          );
+        },
       ),
     );
   }

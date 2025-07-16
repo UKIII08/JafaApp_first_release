@@ -3,7 +3,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
 import 'package:intl/date_symbol_data_local.dart';
-// Potrzebne do rozmycia tła
 
 class SmallGroupScreen extends StatefulWidget {
   final String groupId;
@@ -15,7 +14,6 @@ class SmallGroupScreen extends StatefulWidget {
 }
 
 class _SmallGroupScreenState extends State<SmallGroupScreen> {
-  // Kontrolery, stan i logika (bez zmian)
   final _formKey = GlobalKey<FormState>();
   final _bookController = TextEditingController();
   final _chapterController = TextEditingController();
@@ -26,7 +24,6 @@ class _SmallGroupScreenState extends State<SmallGroupScreen> {
   bool _isSaving = false;
   final List<String> _weekdays = ['Poniedziałek', 'Wtorek', 'Środa', 'Czwartek', 'Piątek', 'Sobota', 'Niedziela'];
 
-  // Definicja palety kolorów dla nowoczesnego wyglądu
   static const Color primaryAccent = Color(0xFF00A9FF);
   static const Color lightBlueBackground = Color(0xFFF0F8FF);
   static const Color darkTextColor = Color(0xFF333333);
@@ -46,14 +43,12 @@ class _SmallGroupScreenState extends State<SmallGroupScreen> {
     super.dispose();
   }
 
-  // --- ZAKTUALIZOWANA FUNKCJA: Wyświetlanie okna z listą nieobecnych ---
   void _showAttendanceDetailsDialog(List<String> absentMembers) {
     showDialog(
       context: context,
       builder: (context) {
         return AlertDialog(
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-          // ZMIANA: Tytuł jest teraz bardziej elastyczny, aby uniknąć overflow
           title: const FittedBox(
             fit: BoxFit.scaleDown,
             child: Row(
@@ -64,7 +59,6 @@ class _SmallGroupScreenState extends State<SmallGroupScreen> {
               ],
             ),
           ),
-          // ZMIANA: Wyświetlanie listy nieobecnych zamiast statystyk
           content: SizedBox(
             width: double.maxFinite,
             child: absentMembers.isEmpty
@@ -73,34 +67,34 @@ class _SmallGroupScreenState extends State<SmallGroupScreen> {
                     title: Text("Wygląda na to, że wszyscy będą obecni!"),
                   )
                 : Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text("Osoby, które zgłosiły nieobecność:", style: TextStyle(fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 8),
-                    Flexible(
-                      child: ListView.builder(
-                        shrinkWrap: true,
-                        itemCount: absentMembers.length,
-                        itemBuilder: (context, index) {
-                          return FutureBuilder<DocumentSnapshot>(
-                            future: FirebaseFirestore.instance.collection('users').doc(absentMembers[index]).get(),
-                            builder: (context, userSnapshot) {
-                              if (!userSnapshot.hasData) {
-                                return const ListTile(title: Text("Ładowanie..."));
-                              }
-                              final userData = userSnapshot.data?.data() as Map<String, dynamic>?;
-                              return ListTile(
-                                leading: const Icon(Icons.person_off_outlined, color: Colors.redAccent),
-                                title: Text(userData?['displayName'] ?? 'Brak nazwy'),
-                              );
-                            },
-                          );
-                        },
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text("Osoby, które zgłosiły nieobecność:", style: TextStyle(fontWeight: FontWeight.bold)),
+                      const SizedBox(height: 8),
+                      Flexible(
+                        child: ListView.builder(
+                          shrinkWrap: true,
+                          itemCount: absentMembers.length,
+                          itemBuilder: (context, index) {
+                            return FutureBuilder<DocumentSnapshot>(
+                              future: FirebaseFirestore.instance.collection('users').doc(absentMembers[index]).get(),
+                              builder: (context, userSnapshot) {
+                                if (!userSnapshot.hasData) {
+                                  return const ListTile(title: Text("Ładowanie..."));
+                                }
+                                final userData = userSnapshot.data?.data() as Map<String, dynamic>?;
+                                return ListTile(
+                                  leading: const Icon(Icons.person_off_outlined, color: Colors.redAccent),
+                                  title: Text(userData?['displayName'] ?? 'Brak nazwy'),
+                                );
+                              },
+                            );
+                          },
+                        ),
                       ),
-                    ),
-                  ],
-                ),
+                    ],
+                  ),
           ),
           actions: [
             TextButton(
@@ -113,7 +107,6 @@ class _SmallGroupScreenState extends State<SmallGroupScreen> {
     );
   }
 
-  // Cała reszta logiki (saveChanges, addAnnouncement, etc.) pozostaje bez zmian
   Future<void> _markAbsence() async {
     final userId = FirebaseAuth.instance.currentUser?.uid;
     if (userId == null) return;
@@ -141,9 +134,16 @@ class _SmallGroupScreenState extends State<SmallGroupScreen> {
         'currentVerse': int.tryParse(_verseController.text.trim()) ?? 1,
         'recurringMeetingDay': _selectedDay,
         'recurringMeetingTime': _selectedTime != null ? '${_selectedTime!.hour.toString().padLeft(2,'0')}:${_selectedTime!.minute.toString().padLeft(2,'0')}' : "18:00",
-        'temporaryMeetingDateTime': _temporaryDateTime,
+        // Konwersja DateTime na Timestamp jest kluczowa dla zapisu
+        'temporaryMeetingDateTime': _temporaryDateTime != null ? Timestamp.fromDate(_temporaryDateTime!) : null,
       });
-      if(mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Zmiany zapisane!')));
+      if(mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Zmiany zapisane!')));
+        // Resetujemy stan po zapisie, aby odświeżył się z nowymi danymi z bazy
+        setState(() {
+          _selectedDay = null; 
+        });
+      }
     } catch (e) {
       if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Błąd zapisu: $e')));
     } finally {
@@ -206,17 +206,37 @@ class _SmallGroupScreenState extends State<SmallGroupScreen> {
     return nextMeetingDate;
   }
   
+  // ✅ POPRAWIONY FORMAT CZASU (24h)
   Future<void> _pickTemporaryDate() async {
     final date = await showDatePicker(context: context, initialDate: _temporaryDateTime ?? DateTime.now(), firstDate: DateTime.now(), lastDate: DateTime.now().add(const Duration(days: 90)));
     if (date == null) return;
-    final time = await showTimePicker(context: context, initialTime: TimeOfDay.fromDateTime(_temporaryDateTime ?? DateTime.now()));
+    final time = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(_temporaryDateTime ?? DateTime.now()),
+      builder: (context, child) {
+        return MediaQuery(
+          data: MediaQuery.of(context).copyWith(alwaysUse24HourFormat: true),
+          child: child!,
+        );
+      },
+    );
     if (time != null) {
       setState(() => _temporaryDateTime = DateTime(date.year, date.month, date.day, time.hour, time.minute));
     }
   }
 
+  // ✅ POPRAWIONY FORMAT CZASU (24h)
   Future<void> _pickRecurringTime() async {
-      final time = await showTimePicker(context: context, initialTime: _selectedTime ?? TimeOfDay.now());
+      final time = await showTimePicker(
+        context: context,
+        initialTime: _selectedTime ?? TimeOfDay.now(),
+        builder: (context, child) {
+          return MediaQuery(
+            data: MediaQuery.of(context).copyWith(alwaysUse24HourFormat: true),
+            child: child!,
+          );
+        },
+      );
       if (time != null) setState(() => _selectedTime = time);
   }
   
@@ -237,7 +257,7 @@ class _SmallGroupScreenState extends State<SmallGroupScreen> {
         stream: FirebaseFirestore.instance.collection('smallGroups').doc(widget.groupId).snapshots(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
-             return const Center(child: CircularProgressIndicator(color: primaryAccent));
+              return const Center(child: CircularProgressIndicator(color: primaryAccent));
           }
           if (!snapshot.hasData || !snapshot.data!.exists) {
             return const Center(child: Padding(padding: EdgeInsets.all(16.0), child: Text('Nie jesteś przypisany/a do żadnej grupy.', textAlign: TextAlign.center)));
@@ -247,7 +267,8 @@ class _SmallGroupScreenState extends State<SmallGroupScreen> {
           final bool isLeader = groupData['leaderId'] == currentUserId;
           final List<String> absentMembers = List<String>.from(groupData['absentNextMeeting'] ?? []);
 
-          if (isLeader) {
+          // ✅ POPRAWIONA LOGIKA: Inicjalizuj stan tylko raz, aby nie nadpisywać zmian użytkownika
+          if (isLeader && _selectedDay == null) {
             _bookController.text = groupData['currentBook'] ?? '';
             _chapterController.text = (groupData['currentChapter'] ?? 1).toString();
             _verseController.text = (groupData['currentVerse'] ?? 1).toString();
@@ -340,10 +361,9 @@ class _SmallGroupScreenState extends State<SmallGroupScreen> {
     return Padding(padding: const EdgeInsets.only(bottom: 12.0), child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Row(children: [Icon(icon, color: darkTextColor, size: 22), const SizedBox(width: 10), Text(title, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: darkTextColor))]), if (action != null) action]));
   }
   
-  // ZMIANA: Usunięto `allMembers` z parametrów, bo nie jest już potrzebne
   Widget _buildMeetingInfo(Map<String, dynamic> data, List<String> absentMembers) {
     final temporaryMeeting = (data['temporaryMeetingDateTime'] as Timestamp?)?.toDate();
-    final isTemporary = temporaryMeeting != null;
+    final isTemporary = temporaryMeeting != null && temporaryMeeting.isAfter(DateTime.now().subtract(const Duration(hours: 3)));
     final DateTime meetingDate = isTemporary ? temporaryMeeting : _calculateNextMeetingDate(data['recurringMeetingDay'] ?? 2, data['recurringMeetingTime'] ?? '18:00');
 
     return InkWell(

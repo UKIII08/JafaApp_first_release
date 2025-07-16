@@ -1,3 +1,5 @@
+// lib/main.dart
+
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -26,6 +28,7 @@ Future<void> _createOrUpdateUserDocument(User user) async {
     Map<String, dynamic> dataToSet = {
       'email': user.email ?? '',
       'displayName': user.displayName ?? '',
+      'photoURL': user.photoURL ?? '', // <<< DODANA LINIA
       'lastLogin': timestamp, // Zaktualizuj czas ostatniego logowania
     };
     // Jeśli dokument nie istnieje, dodaj pola początkowe

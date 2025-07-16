@@ -1,239 +1,299 @@
-import 'package:flutter/material.dart';
-import 'package:table_calendar/table_calendar.dart';
+// lib/screens/wydarzenia_calendar_screen.dart
+
+import 'dart:async';
+import 'dart:collection';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:async/async.dart';
+import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
+import 'package:table_calendar/table_calendar.dart';
 
-// Model wydarzenia (bez zmian)
+// Klasa pomocnicza do reprezentowania wydarzeń
 class _Event {
   final String title;
-  final String type;
-  _Event(this.title, this.type);
+  final String type; // 'event', 'smallGroup', 'serviceMeeting'
+  final dynamic originalData;
+
+  _Event({required this.title, required this.type, this.originalData});
+
+  @override
+  String toString() => title;
 }
 
 class WydarzeniaCalendarScreen extends StatefulWidget {
   const WydarzeniaCalendarScreen({super.key});
 
   @override
-  State<WydarzeniaCalendarScreen> createState() => _WydarzeniaCalendarScreenState();
+  State<WydarzeniaCalendarScreen> createState() =>
+      _WydarzeniaCalendarScreenState();
 }
 
 class _WydarzeniaCalendarScreenState extends State<WydarzeniaCalendarScreen> {
-  // Stan kalendarza
+  late final ValueNotifier<List<_Event>> _selectedEvents;
+  final LinkedHashMap<DateTime, List<_Event>> _eventsByDate =
+      LinkedHashMap<DateTime, List<_Event>>(
+    equals: isSameDay,
+    hashCode: (key) => key.day * 1000000 + key.month * 10000 + key.year,
+  );
+  
+  StreamSubscription? _streamSubscription;
+  bool _isLoading = true;
+
   CalendarFormat _calendarFormat = CalendarFormat.month;
   DateTime _focusedDay = DateTime.now();
   DateTime? _selectedDay;
-  
-  // Strumień i dane
-  Stream<dynamic>? _combinedStream;
-  final Map<DateTime, List<_Event>> _eventsByDate = {};
-
-  // Osobne "pamięci podręczne" dla każdego typu danych
-  List<QueryDocumentSnapshot> _generalEventsCache = [];
-  DocumentSnapshot? _smallGroupDataCache;
-  final Map<String, List<QueryDocumentSnapshot>> _serviceMeetingsCache = {};
-
 
   @override
   void initState() {
     super.initState();
     _selectedDay = _focusedDay;
-    _setupEventStream();
+    _selectedEvents = ValueNotifier(_getEventsForDay(_selectedDay!));
+    _setupStreamsListener();
   }
-  
-  void _setupEventStream() {
+
+  @override
+  void dispose() {
+    _streamSubscription?.cancel();
+    _selectedEvents.dispose();
+    super.dispose();
+  }
+
+  // ✅ NOWA, STABILNA ARCHITEKTURA
+  Future<void> _setupStreamsListener() async {
     final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
-    
-    // Pobieramy role użytkownika, aby wiedzieć, które służby go dotyczą
-    FirebaseFirestore.instance.collection('users').doc(user.uid).get().then((userDoc) async {
-      if (!mounted) return;
-      
-      final List<String> userRoles = List<String>.from(userDoc.data()?['roles'] ?? []);
-      
-      // 1. Strumień ogólnych wydarzeń
-      Stream<QuerySnapshot> generalEventsStream = FirebaseFirestore.instance.collection('events').snapshots();
-      
-      // 2. Strumień małej grupy użytkownika
-      Stream<QuerySnapshot> smallGroupStream = FirebaseFirestore.instance
-        .collection('smallGroups')
-        .where('members', arrayContains: user.uid)
-        .limit(1)
-        .snapshots();
-        
-      // 3. Strumienie spotkań dla służb użytkownika
-      List<Stream<QuerySnapshot>> serviceMeetingStreams = [];
-      if (userRoles.isNotEmpty) {
-        final servicesSnapshot = await FirebaseFirestore.instance.collection('services').where('name', whereIn: userRoles).get();
-        for (var serviceDoc in servicesSnapshot.docs) {
-            serviceMeetingStreams.add(
-              FirebaseFirestore.instance.collection('services').doc(serviceDoc.id).collection('meetings').snapshots()
-            );
-        }
-      }
+    if (user == null) {
+      if (mounted) setState(() => _isLoading = false);
+      return;
+    }
 
-      // Łączymy wszystkie POTRZEBNE strumienie w jeden.
-      setState(() {
-        _combinedStream = StreamGroup.merge([
-          generalEventsStream,
-          smallGroupStream,
-          ...serviceMeetingStreams,
-        ]).asBroadcastStream();
+    // Połącz wszystkie potrzebne strumienie w jeden
+    final userDoc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+    final userRoles = List<String>.from(userDoc.data()?['roles'] ?? []);
+    
+    Stream<QuerySnapshot> generalEventsStream = FirebaseFirestore.instance.collection('events').snapshots();
+    Stream<QuerySnapshot> smallGroupStream = FirebaseFirestore.instance.collection('smallGroups').where('members', arrayContains: user.uid).limit(1).snapshots();
+    List<Stream<QuerySnapshot>> serviceStreams = await _getServiceMeetingStreams(userRoles);
+
+    // Połącz strumienie w jeden
+    List<Stream<QuerySnapshot>> allStreams = [generalEventsStream, smallGroupStream, ...serviceStreams];
+    
+    // Słuchaj zmian na połączonych strumieniach
+    _streamSubscription = Stream<List<QuerySnapshot>>.periodic(const Duration(milliseconds: 50), (count) => [])
+      .asyncMap((_) => Future.wait(allStreams.map((s) => s.first)))
+      .listen((snapshots) {
+        final allDocs = snapshots.expand((snapshot) => snapshot.docs).toList();
+        _processAndUpdateCalendar(allDocs);
       });
-    });
   }
 
-  // Funkcja, która aktualizuje odpowiedni cache na podstawie danych ze strumienia
-  void _updateCacheAndRebuild(AsyncSnapshot<dynamic> snapshot) {
-    if (snapshot.data is QuerySnapshot) {
-      final querySnapshot = snapshot.data as QuerySnapshot;
-      if (querySnapshot.docs.isEmpty) return; // Ignoruj puste aktualizacje
 
-      final path = querySnapshot.docs.first.reference.path;
-      
-      if (path.startsWith('events')) { _generalEventsCache = querySnapshot.docs; } 
-      else if (path.startsWith('smallGroups')) { _smallGroupDataCache = querySnapshot.docs.first; } 
-      else if (path.contains('/meetings/')) {
-        final serviceId = path.split('/')[1];
-        _serviceMeetingsCache[serviceId] = querySnapshot.docs;
-      }
+  Future<List<Stream<QuerySnapshot>>> _getServiceMeetingStreams(List<String> userRoles) async {
+    if (userRoles.isEmpty) return [];
+    List<Stream<QuerySnapshot>> streams = [];
+    final servicesSnapshot = await FirebaseFirestore.instance.collection('services').where('name', whereIn: userRoles).get();
+    for (var serviceDoc in servicesSnapshot.docs) {
+      streams.add(FirebaseFirestore.instance.collection('services').doc(serviceDoc.id).collection('meetings').snapshots());
     }
-    
-    // Po każdej aktualizacji cache, przebuduj całą mapę od zera
-    _rebuildEventMap();
-  }
-
-  void _rebuildEventMap() {
-    _eventsByDate.clear();
-
-    // 1. Przetwarzanie wydarzeń ogólnych z cache
-    for (var doc in _generalEventsCache) {
-      final data = doc.data() as Map<String, dynamic>;
-      final date = (data['eventDate'] as Timestamp).toDate();
-      final dayOnly = DateTime.utc(date.year, date.month, date.day);
-      _eventsByDate.putIfAbsent(dayOnly, () => []).add(_Event(data['title'], 'event'));
-    }
-
-    // 2. Przetwarzanie spotkań służb z cache
-    _serviceMeetingsCache.forEach((serviceId, meetings) {
-      for (var doc in meetings) {
-        final data = doc.data() as Map<String, dynamic>;
-        final date = (data['date'] as Timestamp).toDate();
-        final dayOnly = DateTime.utc(date.year, date.month, date.day);
-        _eventsByDate.putIfAbsent(dayOnly, () => []).add(_Event("Służba: ${data['title']}", 'serviceMeeting'));
-      }
-    });
-    
-    // 3. Przetwarzanie małych grup z cache
-    if (_smallGroupDataCache != null) {
-      final data = _smallGroupDataCache!.data() as Map<String, dynamic>;
-      final groupName = data['groupName'] ?? 'Mała Grupa';
-      final temporaryMeetingTimestamp = data['temporaryMeetingDateTime'] as Timestamp?;
-      bool temporaryMeetingAdded = false;
-
-      if (temporaryMeetingTimestamp != null) {
-        final temporaryDate = temporaryMeetingTimestamp.toDate();
-        if (temporaryDate.isAfter(DateTime.now().subtract(const Duration(days: 1)))) {
-          final dayOnly = DateTime.utc(temporaryDate.year, temporaryDate.month, temporaryDate.day);
-          _eventsByDate.putIfAbsent(dayOnly, () => []).add(_Event('Mała grupa (jednorazowo)', 'smallGroup'));
-          temporaryMeetingAdded = true;
-        }
-      } 
-      
-      if (!temporaryMeetingAdded) {
-        final recurringDay = data['recurringMeetingDay'] as int?;
-        if (recurringDay != null) {
-          for (int i = 0; i < 60; i++) {
-            DateTime dateToCheck = DateTime.now().add(Duration(days: i));
-            if (dateToCheck.weekday == recurringDay) {
-              final dayOnly = DateTime.utc(dateToCheck.year, dateToCheck.month, dateToCheck.day);
-              _eventsByDate.putIfAbsent(dayOnly, () => []);
-              if (!_eventsByDate[dayOnly]!.any((e) => e.type == 'smallGroup')) {
-                 _eventsByDate[dayOnly]!.add(_Event('Mała grupa: $groupName', 'smallGroup'));
-              }
-            }
-          }
-        }
-      }
-    }
+    return streams;
   }
   
+  void _processAndUpdateCalendar(List<QueryDocumentSnapshot> docs) {
+      final newEvents = <DateTime, List<_Event>>{};
+      
+      for (var doc in docs) {
+          final data = doc.data() as Map<String, dynamic>;
+          final String collectionName = doc.reference.parent.id;
+
+          if (collectionName == 'smallGroups') {
+              _addSmallGroupEvents(data, newEvents);
+          } else {
+              _addGeneralEvent(data, collectionName, newEvents);
+          }
+      }
+
+      if (mounted) {
+          setState(() {
+              _eventsByDate.clear();
+              _eventsByDate.addAll(newEvents);
+              _selectedEvents.value = _getEventsForDay(_selectedDay!);
+              _isLoading = false;
+          });
+      }
+  }
+  
+  void _addSmallGroupEvents(Map<String, dynamic> data, Map<DateTime, List<_Event>> eventsMap) {
+      final tempDate = (data['temporaryMeetingDateTime'] as Timestamp?)?.toDate();
+      DateTime? startOfWeekWithTempMeeting;
+      if (tempDate != null) {
+          startOfWeekWithTempMeeting = _getStartOfWeek(tempDate);
+      }
+
+      if (tempDate != null && tempDate.isAfter(DateTime.now().subtract(const Duration(hours: 3)))) {
+          final dateKey = DateTime.utc(tempDate.year, tempDate.month, tempDate.day);
+          eventsMap.putIfAbsent(dateKey, () => []).add(_Event(title: 'Spotkanie małej grupy (jednorazowe)', type: 'smallGroup', originalData: data));
+      }
+
+      final recurringDay = data['recurringMeetingDay'] as int?;
+      final recurringTime = data['recurringMeetingTime'] as String?;
+
+      if (recurringDay != null && recurringTime != null) {
+          final recurringDates = _calculateRecurringMeetingDates(recurringDay, recurringTime);
+          for (var date in recurringDates) {
+              if (date.isAfter(DateTime.now().subtract(const Duration(days: 1)))) {
+                  final startOfCurrentRecurringWeek = _getStartOfWeek(date);
+                  if (startOfWeekWithTempMeeting != null && isSameDay(startOfCurrentRecurringWeek, startOfWeekWithTempMeeting)) {
+                      continue;
+                  }
+                  final dateKey = DateTime.utc(date.year, date.month, date.day);
+                  eventsMap.putIfAbsent(dateKey, () => []).add(_Event(title: 'Spotkanie małej grupy', type: 'smallGroup', originalData: data));
+              }
+          }
+      }
+  }
+
+  void _addGeneralEvent(Map<String, dynamic> data, String collectionName, Map<DateTime, List<_Event>> eventsMap) {
+      DateTime? eventDate;
+      String title = "Brak tytułu";
+      String type = "event";
+
+      if(collectionName == 'events') {
+        eventDate = (data['date'] as Timestamp?)?.toDate();
+        title = data['title'] ?? 'Wydarzenie bez nazwy';
+        type = 'event';
+      } else if (collectionName == 'meetings') {
+        eventDate = (data['date'] as Timestamp?)?.toDate();
+        title = data['title'] ?? 'Spotkanie służby';
+        type = 'serviceMeeting';
+      }
+      
+      if (eventDate != null) {
+        final dateKey = DateTime.utc(eventDate.year, eventDate.month, eventDate.day);
+        eventsMap.putIfAbsent(dateKey, () => []).add(_Event(title: title, type: type, originalData: data));
+      }
+  }
+
+  List<DateTime> _calculateRecurringMeetingDates(int weekDayNumber, String time) {
+    List<DateTime> dates = [];
+    final timeParts = time.split(':');
+    if (timeParts.length != 2) return dates;
+    final hour = int.tryParse(timeParts[0]);
+    final minute = int.tryParse(timeParts[1]);
+    if (hour == null || minute == null) return dates;
+
+    DateTime today = DateTime.now();
+    DateTime startDate = DateTime(today.year, today.month, 1);
+    DateTime endDate = DateTime(today.year, today.month + 4, 1);
+
+    for (var day = startDate; day.isBefore(endDate); day = day.add(const Duration(days: 1))) {
+      if (day.weekday == weekDayNumber) {
+        dates.add(DateTime.utc(day.year, day.month, day.day, hour, minute));
+      }
+    }
+    return dates;
+  }
+
+  DateTime _getStartOfWeek(DateTime date) {
+    final normalizedDate = DateTime.utc(date.year, date.month, date.day);
+    return normalizedDate.subtract(Duration(days: normalizedDate.weekday - 1));
+  }
+
   List<_Event> _getEventsForDay(DateTime day) {
     return _eventsByDate[DateTime.utc(day.year, day.month, day.day)] ?? [];
+  }
+
+  void _onDaySelected(DateTime selectedDay, DateTime focusedDay) {
+    if (!isSameDay(_selectedDay, selectedDay)) {
+      setState(() {
+        _selectedDay = selectedDay;
+        _focusedDay = focusedDay;
+        _selectedEvents.value = _getEventsForDay(selectedDay);
+      });
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Column(
-        children: [
-          StreamBuilder<dynamic>(
-            stream: _combinedStream,
-            builder: (context, snapshot) {
-              if (snapshot.hasData) {
-                // Bezpiecznie aktualizuj dane i przebuduj mapę
-                _updateCacheAndRebuild(snapshot);
-              }
-              // Ten StreamBuilder nie buduje niczego widocznego,
-              // służy tylko do aktualizacji danych w tle.
-              // Widoczny UI jest poniżej.
-              return const SizedBox.shrink(); 
-            },
-          ),
-          
-          // Widoczna część UI, która zawsze używa aktualnej mapy _eventsByDate
-          TableCalendar<_Event>(
-            firstDay: DateTime.utc(2020, 1, 1),
-            lastDay: DateTime.utc(2030, 12, 31),
-            focusedDay: _focusedDay,
-            calendarFormat: _calendarFormat,
-            locale: 'pl_PL',
-            selectedDayPredicate: (day) => isSameDay(_selectedDay, day),
-            eventLoader: _getEventsForDay,
-            onDaySelected: (selectedDay, focusedDay) => setState(() { _selectedDay = selectedDay; _focusedDay = focusedDay; }),
-            onFormatChanged: (format) => setState(() { if (_calendarFormat != format) _calendarFormat = format; }),
-            onPageChanged: (focusedDay) => setState(() { _focusedDay = focusedDay; }),
-            calendarBuilders: CalendarBuilders(
-              markerBuilder: (context, date, events) {
-                if (events.isEmpty) return null;
-                final eventTypes = events.map((e) => e.type).toSet();
-                return Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: eventTypes.take(4).map((type) {
-                    Color color;
-                    switch (type) {
-                      case 'event': color = Colors.blue; break;
-                      case 'smallGroup': color = Colors.green; break;
-                      case 'serviceMeeting': color = Colors.purple; break; 
-                      default: color = Colors.grey;
-                    }
-                    return Container(width: 7, height: 7, margin: const EdgeInsets.symmetric(horizontal: 1.5), decoration: BoxDecoration(shape: BoxShape.circle, color: color));
-                  }).toList(),
-                );
-              },
-            ),
-          ),
-          const SizedBox(height: 8.0),
-          Expanded(
-            child: ListView.builder(
-              itemCount: _getEventsForDay(_selectedDay!).length,
-              itemBuilder: (context, index) {
-                final event = _getEventsForDay(_selectedDay!)[index];
-                late Color color;
-                late IconData icon;
-
-                 switch (event.type) {
-                    case 'event': color = Colors.blue; icon = Icons.event; break;
-                    case 'smallGroup': color = Colors.green; icon = Icons.groups; break;
-                    case 'serviceMeeting': color = Colors.purple; icon = Icons.work_outline; break;
-                    default: color = Colors.grey; icon = Icons.circle;
-                  }
-                return ListTile(leading: Icon(icon, color: color), title: Text(event.title));
-              },
-            ),
-          ),
-        ],
+      appBar: AppBar(
+        title: const Text('Kalendarz wydarzeń'),
+        elevation: 1,
       ),
+      body: _isLoading
+        ? const Center(child: CircularProgressIndicator())
+        : Column(
+            children: [
+              TableCalendar<_Event>(
+                firstDay: DateTime.utc(2022, 1, 1),
+                lastDay: DateTime.utc(2032, 12, 31),
+                focusedDay: _focusedDay,
+                locale: 'pl_PL',
+                calendarFormat: _calendarFormat,
+                eventLoader: _getEventsForDay,
+                selectedDayPredicate: (day) => isSameDay(_selectedDay, day),
+                onDaySelected: _onDaySelected,
+                onFormatChanged: (format) {
+                  if (_calendarFormat != format) {
+                    setState(() => _calendarFormat = format);
+                  }
+                },
+                onPageChanged: (focusedDay) {
+                  setState(() {
+                    _focusedDay = focusedDay;
+                  });
+                },
+                calendarBuilders: CalendarBuilders(
+                  markerBuilder: (context, date, events) {
+                    if (events.isEmpty) return null;
+                    final eventTypes = events.map((e) => e.type).toSet();
+                    return Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: eventTypes.take(4).map((type) {
+                        Color color;
+                        switch (type) {
+                          case 'event': color = Colors.blue; break;
+                          case 'smallGroup': color = Colors.green; break;
+                          case 'serviceMeeting': color = Colors.purple; break;
+                          default: color = Colors.grey;
+                        }
+                        return Container(
+                          width: 7,
+                          height: 7,
+                          margin: const EdgeInsets.symmetric(horizontal: 1.5),
+                          decoration: BoxDecoration(shape: BoxShape.circle, color: color),
+                        );
+                      }).toList(),
+                    );
+                  },
+                ),
+              ),
+              const SizedBox(height: 8.0),
+              Expanded(
+                child: ValueListenableBuilder<List<_Event>>(
+                  valueListenable: _selectedEvents,
+                  builder: (context, value, _) {
+                    return ListView.builder(
+                      itemCount: value.length,
+                      itemBuilder: (context, index) {
+                        final event = value[index];
+                        late Color color;
+                        late IconData icon;
+                        switch (event.type) {
+                          case 'event': color = Colors.blue; icon = Icons.event; break;
+                          case 'smallGroup': color = Colors.green; icon = Icons.groups; break;
+                          case 'serviceMeeting': color = Colors.purple; icon = Icons.work_outline; break;
+                          default: color = Colors.grey; icon = Icons.circle;
+                        }
+                        return ListTile(
+                          leading: Icon(icon, color: color),
+                          title: Text(event.title),
+                        );
+                      },
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
     );
   }
 }

@@ -1,10 +1,7 @@
 // lib/edit_profile_screen.dart
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_storage/firebase_storage.dart';
-import 'package:image_picker/image_picker.dart';
 
 class EditProfileScreen extends StatefulWidget {
   const EditProfileScreen({super.key});
@@ -18,7 +15,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   
   String? _gender;
   bool _isLoading = true;
-  File? _imageFile;
   String? _networkImageURL;
 
   int? _selectedYear;
@@ -26,7 +22,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   int? _selectedDay;
 
   final User? _currentUser = FirebaseAuth.instance.currentUser;
-  final ImagePicker _picker = ImagePicker();
 
   final List<String> _months = [ 'Styczeń', 'Luty', 'Marzec', 'Kwiecień', 'Maj', 'Czerwiec', 'Lipiec', 'Sierpień', 'Wrzesień', 'Październik', 'Listopad', 'Grudzień' ];
   late final List<int> _years;
@@ -71,23 +66,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     }
   }
 
-  Future<void> _pickImage() async {
-    final XFile? pickedFile = await _picker.pickImage(source: ImageSource.gallery, imageQuality: 50);
-    if (pickedFile != null) setState(() => _imageFile = File(pickedFile.path));
-  }
-
-  Future<String?> _uploadImage(String userId) async {
-    if (_imageFile == null) return null;
-    try {
-      final ref = FirebaseStorage.instance.ref().child('profile_pictures').child('$userId.jpg');
-      await ref.putFile(_imageFile!);
-      return await ref.getDownloadURL();
-    } catch (e) {
-      print("Błąd wysyłania zdjęcia: $e");
-      return null;
-    }
-  }
-
   Future<void> _saveProfile() async {
     if (_formKey.currentState!.validate()) {
       setState(() => _isLoading = true);
@@ -98,20 +76,16 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       }
 
       try {
-        String? newImageURL = _imageFile != null ? await _uploadImage(_currentUser!.uid) : null;
-
         final dataToUpdate = <String, dynamic>{
           'gender': _gender,
           'birthDate': birthDate != null ? Timestamp.fromDate(birthDate) : null,
           'birthDay': birthDate?.day,
           'birthMonth': birthDate?.month,
-          // Usuwamy pole z wersetem
           'favoriteBibleVerse': FieldValue.delete(),
         };
-        if (newImageURL != null) {
-          dataToUpdate['photoURL'] = newImageURL;
-        }
-
+        
+        // Nie aktualizujemy już photoURL tutaj, ponieważ jest synchronizowane przy logowaniu
+        
         await FirebaseFirestore.instance.collection('users').doc(_currentUser!.uid).update(dataToUpdate);
 
         if(mounted) {
@@ -142,17 +116,11 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Center(
-                          child: Stack(
-                            children: [
-                              CircleAvatar(
-                                radius: 60,
-                                backgroundImage: _imageFile != null
-                                    ? FileImage(_imageFile!)
-                                    : (_networkImageURL != null ? NetworkImage(_networkImageURL!) : null) as ImageProvider?,
-                                child: _imageFile == null && _networkImageURL == null ? const Icon(Icons.person, size: 60) : null,
-                              ),
-                              Positioned(bottom: 0, right: 0, child: IconButton(icon: const Icon(Icons.camera_alt), onPressed: _pickImage)),
-                            ],
+                          // <<< USUNIĘTO MOŻLIWOŚĆ ZMIANY ZDJĘCIA >>>
+                          child: CircleAvatar(
+                            radius: 60,
+                            backgroundImage: _networkImageURL != null ? NetworkImage(_networkImageURL!) : null,
+                            child: _networkImageURL == null ? const Icon(Icons.person, size: 60) : null,
                           ),
                         ),
                         const SizedBox(height: 32),
