@@ -1,0 +1,2 @@
+C:/Users/piotr/StudioProjects/GitApp/JafaAppStudio/android/app/.cxx/Debug/2c1k4056/arm64-v8a/CMakeFiles/edit_cache.dir
+C:/Users/piotr/StudioProjects/GitApp/JafaAppStudio/android/app/.cxx/Debug/2c1k4056/arm64-v8a/CMakeFiles/rebuild_cache.dir
