@@ -1,12 +1,25 @@
-# Pliki konfiguracyjne i środowiskowe
+# Pliki z danymi poufnymi i konfiguracją środowiska
 .env
 GoogleService-Info.plist
 ServiceDefinitions.json
 google-services.json
-# Katalogi build
-build/
 
-# iOS / Xcode
+# Pliki konfiguracyjne IDE
+.idea/
+.vscode/
+
+# Pliki systemowe
+.DS_Store
+
+# Katalogi build i pliki generowane przez Flutter/Dart
+build/
+.packages
+.pub-cache
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+
+# Pliki generowane specyficzne dla iOS / Xcode
 *.mode1v3
 *.mode2v3
 *.pbxuser
@@ -19,42 +32,11 @@ Icon?
 profile
 *.tags*
 *.swp
-
-# Flutter i Dart
-.flutter-plugins
-.flutter-plugins-dependencies
-.packages
-.pub-cache
-.dart_tool/
-.flutter-plugins
-.flutter-plugins-dependencies
-
-# Flutter output
-Flutter/App.framework
-Flutter/Flutter.framework
-Flutter/Flutter.podspec
-Flutter/Generated.xcconfig
-Flutter/ephemeral/
-Flutter/app.flx
-Flutter/app.zip
-Flutter/flutter_assets/
-Flutter/flutter_export_environment.sh
-
-# Pods (CocoaPods)
 Pods/
 **/.symlinks/
-
-# Vagrant
-.vagrant/
-
-# SCons
-.sconsign.dblite
-
-# Generated files
-**/.generated/
 Runner/GeneratedPluginRegistrant.*
 
-# Wyjątki do powyższych reguł
+# Wyjątki do powyższych reguł (jeśli są potrzebne)
 !default.mode1v3
 !default.mode2v3
 !default.pbxuser
